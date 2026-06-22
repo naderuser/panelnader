@@ -960,7 +960,6 @@ function teacherPage() {
         <div class="row" style="margin-bottom:16px">
           <input id="sch-school" placeholder="نام مدرسه" style="flex:1">
           <input id="sch-grade" placeholder="پایه" style="flex:1">
-          <input id="sch-year" placeholder="سال تحصیلی" style="flex:1">
         </div>
         <div class="row" style="margin-bottom:16px">
           <input id="sch-class" placeholder="نام کلاس" style="flex:1">
@@ -968,7 +967,7 @@ function teacherPage() {
         </div>
         <div class="schedule-table-wrap">
           <table class="schedule-table" id="schedule-table">
-            <thead><tr><th>روز/ساعت</th><th>شنبه</th><th>یکشنبه</th><th>دوشنبه</th><th>سه‌شنبه</th><th>چهارشنبه</th></tr></thead>
+            <thead><tr><th>روز / زنگ</th><th>زنگ اول</th><th>زنگ دوم</th><th>زنگ سوم</th><th>زنگ چهارم</th><th>زنگ پنجم</th></tr></thead>
             <tbody id="schedule-body"></tbody>
           </table>
         </div>
@@ -1262,9 +1261,12 @@ function teacherScript() {
   document.getElementById('btn-gen-schedule').onclick=function(){
     var body=document.getElementById('schedule-body');
     var html='';
-    for(var i=1;i<=5;i++){
-      html=html+'<tr><td>ساعت '+i+'</td>';
-      for(var j=0;j<5;j++){html=html+'<td><textarea style="width:100%;min-height:40px;border:1px solid #ddd;padding:4px;border-radius:4px" id="c'+j+i+'"></textarea></td>';}
+    var days=['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه'];
+    for(var d=0;d<5;d++){
+      html=html+'<tr><td>'+days[d]+'</td>';
+      for(var i=1;i<=5;i++){
+        html=html+'<td><textarea style="width:100%;min-height:50px;border:1px solid #ddd;padding:6px;border-radius:4px;font-family:inherit" id="c'+d+i+'"></textarea></td>';
+      }
       html=html+'</tr>';
     }
     body.innerHTML=html;
@@ -1276,15 +1278,16 @@ function teacherScript() {
     var cls=document.getElementById('sch-class').value;
     var teacher=document.getElementById('sch-teacher').value;
     var days=['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه'];
-    var html='<html><head><meta charset="utf-8"><style>body{direction:rtl;font-family:tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:8px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee}</style></head><body>';
+    var zang=['زنگ اول','زنگ دوم','زنگ سوم','زنگ چهارم','زنگ پنجم'];
+    var html='<html><head><meta charset="utf-8"><style>body{direction:rtl;font-family:tahoma,Arial;padding:15px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee;font-weight:bold}</style></head><body>';
     html=html+'<div style="text-align:center"><h2>'+school+'</h2><p>برنامه هفتگی - '+grade+'</p><p>کلاس: '+cls+' | آموزگار: '+teacher+'</p></div>';
-    html=html+'<table><tr><th>روز/ساعت</th>';
-    for(var d=0;d<5;d++){html=html+'<th>'+days[d]+'</th>';}
+    html=html+'<table><tr><th>روز / زنگ</th>';
+    for(var z=0;z<5;z++){html=html+'<th>'+zang[z]+'</th>';}
     html=html+'</tr>';
-    for(var h=1;h<=5;h++){
-      html=html+'<tr><td>ساعت '+h+'</td>';
-      for(var c=0;c<5;c++){
-        var el=document.getElementById('c'+c+h);
+    for(var d=0;d<5;d++){
+      html=html+'<tr><td>'+days[d]+'</td>';
+      for(var i=1;i<=5;i++){
+        var el=document.getElementById('c'+d+i);
         html=html+'<td>'+(el?el.value:'')+'</td>';
       }
       html=html+'</tr>';
