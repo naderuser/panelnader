@@ -1684,34 +1684,26 @@ function studentPortalPage() {
     }
     
     // Login
-    const loginBtn = document.getElementById('student-login-btn');
-    if (loginBtn) {
-      loginBtn.addEventListener('click', async () => {
-        alert('دکمه کلیک شد!');
-        const studentId = document.getElementById('student-id').value.trim();
-        const pass = document.getElementById('student-pass').value.trim();
-        if (!studentId || !pass) {
-          document.getElementById('student-login-error').textContent = 'لطفاً همه فیلدها را پر کنید';
-          return;
-        }
-        
-        const res = await fetch('/api/student/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ studentId, password: pass })
-        });
-        const data = await res.json();
-        
-        if (data.ok) {
-          CURRENT_STUDENT = data.student;
-          showDashboard();
-        } else {
-          document.getElementById('student-login-error').textContent = data.error || 'خطا در ورود';
-        }
+    document.getElementById('student-login-btn').onclick = async function() {
+      var studentId = document.getElementById('student-id').value.trim();
+      var pass = document.getElementById('student-pass').value.trim();
+      if (!studentId || !pass) {
+        document.getElementById('student-login-error').textContent = 'Please fill all fields';
+        return;
+      }
+      var res = await fetch('/api/student/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: studentId, password: pass })
       });
-    } else {
-      alert('دکمه ورود پیدا نشد!');
-    }
+      var data = await res.json();
+      if (data.ok) {
+        CURRENT_STUDENT = data.student;
+        showDashboard();
+      } else {
+        document.getElementById('student-login-error').textContent = data.error || 'Login error';
+      }
+    };
     
     // Logout
     $('student-logout-btn').addEventListener('click', async () => {
