@@ -1,5 +1,5 @@
 /**
- * پنل آزمون ساز دوره ابتدایی
+ * پنل آموزشی هوشمند
  * طراح: نادر اکشیک
  *
  * یک Cloudflare Worker کامل شامل:
@@ -15,7 +15,7 @@
  * داده‌ها در Cloudflare KV (binding: EXAM_KV) ذخیره می‌شوند.
  */
 
-const APP_TITLE = "پنل آزمون ساز دوره ابتدایی";
+const APP_TITLE = "پنل آموزشی هوشمند";
 const APP_DESIGNER = "طراح: نادر اکشیک";
 
 const DEFAULT_META = {
