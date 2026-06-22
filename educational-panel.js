@@ -683,24 +683,11 @@ const SHARED_CSS = `
   .crop-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
   
   /* ---- برنامه هفتگی ---- */
-  .schedule-header{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px}
-  .schedule-header input{width:100%;padding:12px 14px;border:2px solid #e2e8f0;border-radius:10px;font-size:15px}
-  .schedule-header input:focus{border-color:var(--primary-2);outline:none}
-  .schedule-info{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
-  .schedule-info input{width:100%;padding:12px 14px;border:2px solid #e2e8f0;border-radius:10px;font-size:15px}
-  .schedule-info input:focus{border-color:var(--primary-2);outline:none}
-  .schedule-table-wrap{overflow-x:auto;border-radius:16px;border:2px solid #e2e8f0;background:#fff;margin-bottom:20px}
-  .schedule-table{width:100%;border-collapse:collapse;font-size:14px}
-  .schedule-table th{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:14px 10px;font-weight:600;text-align:center}
-  .schedule-table td{border:1px solid #e2e8f0;padding:0;vertical-align:top}
-  .schedule-table td:first-child{background:#f8fafc;font-weight:600;text-align:center;width:100px}
-  .schedule-cell{min-height:80px;padding:8px}
-  .schedule-cell textarea{width:100%;min-height:60px;border:1px solid #e2e8f0;border-radius:8px;padding:8px;resize:vertical;font-family:inherit;font-size:13px;background:#fafbfc}
-  .schedule-cell textarea:focus{outline:none;border-color:var(--primary);background:#fff}
-  .schedule-actions{display:flex;gap:12px;flex-wrap:wrap}
-  .schedule-day-select{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
-  .schedule-day-select label{display:flex;align-items:center;gap:6px;padding:8px 14px;background:#f1f5f9;border-radius:8px;cursor:pointer;font-size:13px}
-  .schedule-day-select input{width:60px;padding:6px;border:1px solid #e2e8f0;border-radius:6px;text-align:center}
+  .schedule-table-wrap{overflow-x:auto;border-radius:12px;border:2px solid #e2e8f0;background:#fff;margin-bottom:16px}
+  .schedule-table{width:100%;border-collapse:collapse}
+  .schedule-table th{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:12px 8px;font-weight:600;text-align:center}
+  .schedule-table td{border:1px solid #e2e8f0;padding:4px}
+  .schedule-table td:first-child{background:#f8fafc;font-weight:600;text-align:center}
 `;
 
 const FONT_LINK = `<link rel="preconnect" href="https://cdn.jsdelivr.net"><link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet">`;
@@ -970,51 +957,23 @@ function teacherPage() {
       <!-- برنامه هفتگی -->
       <div class="card tab-content hidden" id="tab-schedule">
         <h3>📅 برنامه هفتگی</h3>
-        <div class="schedule-header">
-          <div>
-            <label style="display:block;margin-bottom:6px;font-weight:600;color:#475569">نام مدرسه</label>
-            <input type="text" id="sch-school" placeholder="مثال: دبستان شهید چمران">
-          </div>
-          <div>
-            <label style="display:block;margin-bottom:6px;font-weight:600;color:#475569">پایه تحصیلی</label>
-            <input type="text" id="sch-grade" placeholder="مثال: پایه سوم">
-          </div>
-          <div>
-            <label style="display:block;margin-bottom:6px;font-weight:600;color:#475569">سال تحصیلی</label>
-            <input type="text" id="sch-year" placeholder="مثال: ۱۴۰۴-۱۴۰۳">
-          </div>
+        <div class="row" style="margin-bottom:16px">
+          <input id="sch-school" placeholder="نام مدرسه" style="flex:1">
+          <input id="sch-grade" placeholder="پایه" style="flex:1">
+          <input id="sch-year" placeholder="سال تحصیلی" style="flex:1">
         </div>
-        <div class="schedule-info">
-          <div>
-            <label style="display:block;margin-bottom:6px;font-weight:600;color:#475569">نام کلاس</label>
-            <input type="text" id="sch-class" placeholder="مثال: کلاس ۳/۲">
-          </div>
-          <div>
-            <label style="display:block;margin-bottom:6px;font-weight:600;color:#475569">نام و نام خانوادگی آموزگار</label>
-            <input type="text" id="sch-teacher" placeholder="نام آموزگار">
-          </div>
+        <div class="row" style="margin-bottom:16px">
+          <input id="sch-class" placeholder="نام کلاس" style="flex:1">
+          <input id="sch-teacher" placeholder="نام آموزگار" style="flex:1">
         </div>
-        
-        <div class="schedule-day-select">
-          <label>شنبه: <input type="number" id="sch-hours-sat" min="1" max="10" value="5"></label>
-          <label>یکشنبه: <input type="number" id="sch-hours-sun" min="1" max="10" value="5"></label>
-          <label>دوشنبه: <input type="number" id="sch-hours-mon" min="1" max="10" value="5"></label>
-          <label>سه‌شنبه: <input type="number" id="sch-hours-tue" min="1" max="10" value="5"></label>
-          <label>چهارشنبه: <input type="number" id="sch-hours-wed" min="1" max="10" value="5"></label>
-        </div>
-        
         <div class="schedule-table-wrap">
           <table class="schedule-table" id="schedule-table">
-            <thead><tr><th>روز/ساعت</th></tr></thead>
-            <tbody></tbody>
+            <thead><tr><th>روز/ساعت</th><th>شنبه</th><th>یکشنبه</th><th>دوشنبه</th><th>سه‌شنبه</th><th>چهارشنبه</th></tr></thead>
+            <tbody id="schedule-body"></tbody>
           </table>
         </div>
-        
-        <div class="schedule-actions">
-          <button class="btn primary" id="btn-dl-schedule-word">📥 دانلود برنامه (Word)</button>
-          <button class="btn gray" id="btn-save-schedule">💾 ذخیره</button>
-          <button class="btn sec" id="btn-load-schedule">📂 بارگذاری</button>
-        </div>
+        <button class="btn primary" id="btn-gen-schedule">🔄 ساخت جدول</button>
+        <button class="btn" id="btn-print-schedule">🖨️ چاپ</button>
       </div>
 
       <!-- جدول / اکسل -->
@@ -1297,157 +1256,45 @@ function teacherScript() {
     document.getElementById('tab-'+t.dataset.tab).classList.remove('hidden');
     if(t.dataset.tab==='answers')loadAnswers();
     if(t.dataset.tab==='tables')renderTables();
-    if(t.dataset.tab==='schedule')initSchedule();
   });
 
   // ---- برنامه هفتگی ----
-  const DAYS=['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه'];
-  const DAY_KEYS=['sat','sun','mon','tue','wed'];
-  
-  function initSchedule(){
-    const hours={sat:5,sun:5,mon:5,tue:5,wed:5};
-    ['sat','sun','mon','tue','wed'].forEach(d=>{
-      const inp=document.getElementById('sch-hours-'+d);
-      if(inp)hours[d]=parseInt(inp.value)||5;
-    });
-    renderScheduleTable(hours);
-  }
-  
-  function renderScheduleTable(hours){
-    const thead=document.querySelector('#schedule-table thead tr');
-    const tbody=document.querySelector('#schedule-table tbody');
-    thead.innerHTML='<th>روز/ساعت</th>';
-    DAYS.forEach((d,i)=>thead.innerHTML+='<th>'+d+'</th>');
-    
-    const maxHours=Math.max(...Object.values(hours));
-    let rows='';
-    for(let h=1;h<=maxHours;h++){
-      rows+='<tr><td>ساعت '+toPersian(h)+'</td>';
-      DAY_KEYS.forEach((dk,i)=>{
-        const dayHours=hours[dk]||5;
-        if(h<=dayHours){
-          rows+='<td class="schedule-cell"><textarea id="cell-'+dk+'-'+h+'" placeholder="درس..."></textarea></td>';
-        }else{
-          rows+='<td></td>';
-        }
-      });
-      rows+='</tr>';
+  document.getElementById('btn-gen-schedule').onclick=function(){
+    var body=document.getElementById('schedule-body');
+    var html='';
+    for(var i=1;i<=5;i++){
+      html=html+'<tr><td>ساعت '+i+'</td>';
+      for(var j=0;j<5;j++){html=html+'<td><textarea style="width:100%;min-height:40px;border:1px solid #ddd;padding:4px;border-radius:4px" id="c'+j+i+'"></textarea></td>';}
+      html=html+'</tr>';
     }
-    tbody.innerHTML=rows;
-  }
+    body.innerHTML=html;
+  };
   
-  function toPersian(n){
-    const p=['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
-    return String(n).replace(/[0-9]/g,d=>p[d]);
-  }
-  
-  document.getElementById('btn-dl-schedule-word').onclick=function(){
-    const school=document.getElementById('sch-school').value||'';
-    const grade=document.getElementById('sch-grade').value||'';
-    const year=document.getElementById('sch-year').value||'';
-    const cls=document.getElementById('sch-class').value||'';
-    const teacher=document.getElementById('sch-teacher').value||'';
-    
-    const hours={};
-    DAY_KEYS.forEach(dk=>{const inp=document.getElementById('sch-hours-'+dk);hours[dk]=parseInt(inp?.value)||5;});
-    const maxHours=Math.max(...Object.values(hours));
-    
-    const esc2=function(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');};
-    
-    let html='<html><head><meta charset="utf-8"><title>برنامه هفتگی</title><style>'+
-    'body{font-family:tahoma,arial,sans-serif;direction:rtl;padding:20px}'+
-    'table{width:100%;border-collapse:collapse;margin-top:15px}'+
-    'th,td{border:1px solid #333;padding:8px;text-align:center}'+
-    'th{background:#667eea;color:#fff}'+
-    'td:first-child{background:#eee}'+
-    '</style></head><body>'+
-    '<div style="text-align:center"><h2>'+esc2(school||'مدرسه')+'</h2>'+
-    '<p>برنامه هفتگی - '+esc2(grade)+' - سال '+esc2(year)+'</p>'+
-    '<p>کلاس: '+esc2(cls)+' | آموزگار: '+esc2(teacher)+'</p></div>'+
-    '<table><tr><th>روز/ساعت</th>';
-    DAYS.forEach(function(d){html+='<th>'+d+'</th>';});
-    html+='</tr>';
-    for(var h=1;h<=maxHours;h++){
-      html+='<tr><td>ساعت '+toPersian(h)+'</td>';
-      DAY_KEYS.forEach(function(dk){
-        var dayHours=hours[dk]||5;
-        var cell=document.getElementById('cell-'+dk+'-'+h);
-        var val=cell?cell.value:'';
-        if(h<=dayHours)html+='<td>'+esc2(val)+'</td>';
-        else html+='<td></td>';
-      });
-      html+='</tr>';
+  document.getElementById('btn-print-schedule').onclick=function(){
+    var school=document.getElementById('sch-school').value;
+    var grade=document.getElementById('sch-grade').value;
+    var cls=document.getElementById('sch-class').value;
+    var teacher=document.getElementById('sch-teacher').value;
+    var days=['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه'];
+    var html='<html><head><meta charset="utf-8"><style>body{direction:rtl;font-family:tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:8px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee}</style></head><body>';
+    html=html+'<div style="text-align:center"><h2>'+school+'</h2><p>برنامه هفتگی - '+grade+'</p><p>کلاس: '+cls+' | آموزگار: '+teacher+'</p></div>';
+    html=html+'<table><tr><th>روز/ساعت</th>';
+    for(var d=0;d<5;d++){html=html+'<th>'+days[d]+'</th>';}
+    html=html+'</tr>';
+    for(var h=1;h<=5;h++){
+      html=html+'<tr><td>ساعت '+h+'</td>';
+      for(var c=0;c<5;c++){
+        var el=document.getElementById('c'+c+h);
+        html=html+'<td>'+(el?el.value:'')+'</td>';
+      }
+      html=html+'</tr>';
     }
-    html+='</table></body></html>';
-    
-    var blob=new Blob([html],{type:'application/msword'});
-    var a=document.createElement('a');a.href=URL.createObjectURL(blob);
-    a.download='برنامه-هفتگی.doc';a.click();
+    html=html+'</table></body></html>';
+    var w=window.open('','_blank');
+    w.document.write(html);
+    w.document.close();
+    w.print();
   };
-  
-  document.getElementById('btn-save-schedule').onclick=async function(){
-    const data={
-      school:document.getElementById('sch-school').value,
-      grade:document.getElementById('sch-grade').value,
-      year:document.getElementById('sch-year').value,
-      cls:document.getElementById('sch-class').value,
-      teacher:document.getElementById('sch-teacher').value,
-      hours:{}
-    };
-    DAY_KEYS.forEach(dk=>{
-      const inp=document.getElementById('sch-hours-'+dk);
-      data.hours[dk]=parseInt(inp?.value)||5;
-    });
-    const cells={};
-    document.querySelectorAll('.schedule-cell textarea').forEach(t=>{
-      cells[t.id]=t.value;
-    });
-    data.cells=cells;
-    const json=JSON.stringify(data);
-    const blob=new Blob([json],{type:'application/json'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-    a.download='برنامه-هفتگی.json';a.click();
-    toast('برنامه ذخیره شد');
-  };
-  
-  document.getElementById('btn-load-schedule').onclick=function(){
-    const inp=document.createElement('input');inp.type='file';inp.accept='.json';
-    inp.onchange=async function(){
-      const file=inp.files[0];if(!file)return;
-      const text=await file.text();
-      try{
-        const data=JSON.parse(text);
-        document.getElementById('sch-school').value=data.school||'';
-        document.getElementById('sch-grade').value=data.grade||'';
-        document.getElementById('sch-year').value=data.year||'';
-        document.getElementById('sch-class').value=data.cls||'';
-        document.getElementById('sch-teacher').value=data.teacher||'';
-        if(data.hours){
-          Object.entries(data.hours).forEach(([k,v])=>{
-            const el=document.getElementById('sch-hours-'+k);
-            if(el)el.value=v;
-          });
-        }
-        initSchedule();
-        setTimeout(()=>{
-          if(data.cells){
-            Object.entries(data.cells).forEach(([id,val])=>{
-              const el=document.getElementById(id);
-              if(el)el.value=val;
-            });
-          }
-        },100);
-        toast('برنامه بارگذاری شد');
-      }catch(e){toast('خطا در خواندن فایل');}
-    };
-    inp.click();
-  };
-  
-  // تغییر تعداد ساعت‌ها
-  ['sat','sun','mon','tue','wed'].forEach(dk=>{
-    const inp=document.getElementById('sch-hours-'+dk);
-    if(inp)inp.addEventListener('change',initSchedule);
-  });
 
   // ---- دانش‌آموزان ----
   async function loadStudents(){
