@@ -564,6 +564,11 @@ const SHARED_CSS = `
   .toolbar button:hover{background:#c7d2fe}
   .toolbar .grp-label{font-size:12px;color:var(--muted);align-self:center;margin-left:6px}
   .imgprev{max-width:220px;max-height:160px;border:1px solid var(--line);border-radius:8px;margin-top:6px;display:block}
+  .q-with-img{display:flex;gap:16px;align-items:flex-start}
+  .q-with-img .q-text{flex:1}
+  .q-with-img .q-img img{max-width:180px;max-height:140px}
+  .q-img-inline{display:flex;gap:12px;align-items:center;margin-top:8px}
+  .q-img-inline img{max-width:160px;max-height:120px;border-radius:8px}
   table{width:100%;border-collapse:collapse;margin-top:10px}
   th,td{border:1px solid var(--line);padding:8px;text-align:right;font-size:14px;vertical-align:top}
   th{background:#f1f5f9}
@@ -778,7 +783,10 @@ async function studentPage(env, id) {
     function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
     function esc(s){const d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;}
     function typeLabel(t){return {descriptive:'تشریحی',multiple:'چهارگزینه‌ای',truefalse:'صحیح/غلط',short:'کوتاه‌پاسخ'}[t]||t;}
-    function qHtml(q){return q.rich?(q.text||''):esc(q.text);}
+    function qHtml(q){
+      if(!q.image)return q.rich?(q.text||''):esc(q.text);
+      return '<div class="q-with-img"><div class="q-text">'+(q.rich?q.text||'':esc(q.text))+'</div><div class="q-img"><img src="'+q.image+'" class="imgprev"></div></div>';
+    }
     function ansText(q,ans){
       if(q.type==='multiple'){const idx=parseInt(ans,10);return isNaN(idx)?'':(['الف','ب','ج','د'][idx]+') '+esc((q.options&&q.options[idx])||''));}
       if(q.type==='truefalse'){return ans==='true'?'صحیح':(ans==='false'?'غلط':'');}
@@ -1447,7 +1455,10 @@ function teacherScript() {
     box.innerHTML=QUESTIONS.map((q,i)=>qBlock(q,i)).join('')||'<p class="muted">سوالی اضافه نشده است.</p>';
   }
   function escA(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
-  function qHtml(q){return q.rich?(q.text||''):esc(q.text);}
+  function qHtml(q){
+    if(!q.image)return q.rich?(q.text||''):esc(q.text);
+    return '<div class="q-with-img"><div class="q-text">'+(q.rich?q.text||'':esc(q.text))+'</div><div class="q-img"><img src="'+q.image+'" class="imgprev"></div></div>';
+  }
   function symBar(i){
     const mk=(arr,fn)=>arr.map(s=>'<button type="button" onmousedown="event.preventDefault()" onclick="'+fn+'('+i+',\\''+escA(s)+'\\')">'+escA(s)+'</button>').join('');
     let h='<div class="toolbar"><span class="grp-label">علائم ریاضی:</span>'+mk(MATH,'insSym')+
@@ -1477,6 +1488,9 @@ function teacherScript() {
         for(let oi=0;oi<4;oi++){
           body+='<div class="opt-row"><span>'+['الف','ب','ج','د'][oi]+')</span><input type="text" value="'+esc((q.options&&q.options[oi])||'')+'" oninput="updOpt('+i+','+oi+',this.value)"></div>';
         }
+        body+='<label>عکس (اختیاری)</label>';
+        if(q.image){body+='<div class="q-img-inline"><img src="'+q.image+'" class="imgprev"><button class="btn sm danger" onclick="rmImg('+i+')">حذف</button></div>';}
+        else{body+='<input type="file" accept="image/*" onchange="loadImg('+i+',this)">';}
       }else if(q.type==='truefalse'){
         body+='<label>پاسخ صحیح</label><select onchange="upd('+i+',\\'correct\\',this.value)">'+
           '<option value="true" '+(String(q.correct)==='true'?'selected':'')+'>صحیح</option>'+
