@@ -2867,17 +2867,18 @@ function teacherScript() {
   function renderStudents() {
     const body = $('students-body');
     if (!STUDENTS.length) {
-      body.innerHTML = '<tr><td colspan="6" class="text-center muted">هنوز دانش‌آموزی ثبت نشده</td></tr>';
+      body.innerHTML = '<tr><td colspan="7" class="text-center muted">هنوز دانش‌آموزی ثبت نشده</td></tr>';
       return;
     }
     body.innerHTML = STUDENTS.map(s => {
       const cls = CLASSES.find(c => c.id === s.classId);
       return '<tr>' +
+        '<td><code style="background:#e0f2fe;padding:2px 6px;border-radius:4px;color:#0369a1">' + esc(s.id || '') + '</code></td>' +
         '<td>' + esc(s.name) + '</td>' +
         '<td>' + esc(s.fatherName || '') + '</td>' +
         '<td>' + esc(s.nationalId || '') + '</td>' +
         '<td>' + (cls ? esc(cls.name) : '-') + '</td>' +
-        '<td><code>' + esc(s.tempPassword || '*****') + '</code></td>' +
+        '<td><code style="background:#fef3c7;padding:2px 6px;border-radius:4px">' + esc(s.tempPassword || '*****') + '</code></td>' +
         '<td><button class="btn btn-danger btn-sm" onclick="deleteStudent(\\'' + s.id + '\\')">🗑️</button></td>' +
       '</tr>';
     }).join('');
@@ -2902,7 +2903,8 @@ function teacherScript() {
       res.student.tempPassword = res.student.password;
       STUDENTS.unshift(res.student);
       renderStudents();
-      toast('دانش‌آموز اضافه شد. رمز: ' + res.student.password);
+      // Show both ID and password
+      alert('✅ دانش‌آموز اضافه شد!\n\n📋 کد دانش‌آموزی: ' + res.student.id + '\n🔑 رمز عبور: ' + res.student.password + '\n\n⚠️ این اطلاعات را به دانش‌آموز بدهید!');
       $('new-student-name').value = '';
       $('new-student-father').value = '';
       $('new-student-code').value = '';
