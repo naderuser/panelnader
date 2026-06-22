@@ -1385,7 +1385,7 @@ function teacherScript() {
     var title=document.getElementById('tbl-title').value||'جدول';
     var rows=parseInt(document.getElementById('tbl-rows').value)||5;
     var cols=parseInt(document.getElementById('tbl-cols').value)||4;
-    var html='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>table{direction:rtl}th,td{border:1px solid #333;padding:6px}th{background:#667eea;color:#fff;text-align:center}</style></head><body>';
+    var html='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>body{direction:rtl;text-align:center}table{margin:0 auto;direction:rtl}th,td{border:1px solid #333;padding:6px}th{background:#667eea;color:#fff;text-align:center}</style></head><body>';
     html=html+'<h2>'+title+'</h2><table><tr><th>ردیف</th>';
     for(var c=1;c<=cols;c++){html=html+'<th>ستون '+c+'</th>';}
     html=html+'</tr>';
