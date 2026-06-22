@@ -436,10 +436,10 @@ function wordResponse(bodyHtml, filename) {
 }
 
 function wordHeader(meta, extra = "") {
-  // سربرگ برگه‌ی آزمون فقط نام مدرسه‌ی خود معلم را نشان می‌دهد
   return (
     `<div class="hdr">` +
     `<h1>${esc(meta.school || "")}</h1>` +
+    (meta.examName?`<p>${esc(meta.examName)}</p>`:'') +
     `</div>` +
     extra
   );
@@ -467,7 +467,7 @@ function examWord(meta, questions) {
   body +=
     `<table class="meta-table">` +
     `<tr><td>نام و نام خانوادگی: ...................</td><td>نام پدر: ...................</td><td>کد ملی: ...................</td></tr>` +
-    `<tr><td>نام درس: ...................</td><td>تاریخ آزمون: ...................</td><td>کلاس: ...................</td></tr>` +
+    `<tr><td>نام آموزگار: ${esc(meta.teacher||'...................')}</td><td>تاریخ آزمون: ...................</td><td>کلاس: ...................</td></tr>` +
     `</table>`;
 
   questions.forEach((q, i) => {
@@ -566,9 +566,9 @@ const SHARED_CSS = `
   .imgprev{max-width:220px;max-height:160px;border:1px solid var(--line);border-radius:8px;margin-top:6px;display:block}
   .q-with-img{display:flex;gap:16px;align-items:flex-start}
   .q-with-img .q-text{flex:1}
-  .q-with-img .q-img img{max-width:180px;max-height:140px}
+  .q-with-img .q-img img{max-width:300px;max-height:250px}
   .q-img-inline{display:flex;gap:12px;align-items:center;margin-top:8px}
-  .q-img-inline img{max-width:160px;max-height:120px;border-radius:8px}
+  .q-img-inline img{max-width:250px;max-height:200px;border-radius:8px}
   table{width:100%;border-collapse:collapse;margin-top:10px}
   th,td{border:1px solid var(--line);padding:8px;text-align:right;font-size:14px;vertical-align:top}
   th{background:#f1f5f9}
@@ -756,7 +756,7 @@ async function studentPage(env, id) {
       </div>
       <div class="row">
         <div><label>کد ملی *</label><input id="f-nid" inputmode="numeric" autocomplete="off"></div>
-        <div><label>نام درس *</label><input id="f-course" autocomplete="off"></div>
+        <div><label>نام آزمون *</label><input id="f-course" autocomplete="off"></div>
         <div><label>تاریخ آزمون *</label><input id="f-date" autocomplete="off"></div>
       </div>
       <label>سوال امنیتی: <span id="sec-q"></span> *</label><input id="f-sec" inputmode="numeric" autocomplete="off">
@@ -798,7 +798,8 @@ async function studentPage(env, id) {
       const d = await r.json();
       if(!d.ok){document.body.innerHTML='<div class="wrap"><div class="card"><h2>'+d.error+'</h2></div></div>';return;}
       DATA = d;
-      document.getElementById('hdr2').innerHTML='<h3 style="margin:0">'+esc(d.meta.school||'')+'</h3>';
+      document.getElementById('hdr2').innerHTML='<h3 style="margin:0">'+esc(d.meta.school||'')+'</h3>'+
+        (d.meta.examName?'<p style="margin:4px 0 0;font-size:14px">آزمون: '+esc(d.meta.examName)+'</p>':'');
       if(d.submitted){ renderResult(d.result); }
       else { document.getElementById('step-info').classList.remove('hidden'); }
     }
@@ -822,7 +823,7 @@ async function studentPage(env, id) {
           '<td>'+esc(fb)+'</td></tr>';
       }).join('');
       done.innerHTML='<h2>نتیجه آزمون</h2>'+
-        '<p class="muted">نام: '+esc(res.student.name)+' | نام درس: '+esc(res.student.courseName||'')+' | تاریخ: '+esc(res.student.examDate||'')+'</p>'+
+        '<p class="muted">نام: '+esc(res.student.name)+' | آزمون: '+esc(res.student.courseName||'')+' | تاریخ: '+esc(res.student.examDate||'')+'</p>'+
         '<table><tr><th>#</th><th>سوال</th><th>پاسخ شما</th><th>وضعیت</th><th>بازخورد معلم</th></tr>'+rows+'</table>'+
         (g.overall?'<p style="margin-top:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px"><b>بازخورد کلی معلم:</b> '+esc(g.overall)+'</p>':'');
     }
@@ -940,9 +941,15 @@ function teacherPage() {
       <!-- سوالات -->
       <div class="card tab-content hidden" id="tab-questions">
         <h3>سربرگ آزمون</h3>
-        <label>نام مدرسه</label><input id="m-school">
-        <p class="muted">نام مدرسه را خودتان وارد کنید؛ همین نام در بالای برگه‌ی آزمون (خروجی Word) نمایش داده می‌شود.<br>
-        دانش‌آموز هنگام آزمون این موارد را پر می‌کند: نام و نام خانوادگی، نام پدر، کد ملی، نام درس، تاریخ آزمون.</p>
+        <div class="row" style="margin-bottom:12px">
+          <input id="m-school" placeholder="نام مدرسه" style="flex:1">
+          <input id="m-exam-name" placeholder="نام آزمون" style="flex:1">
+        </div>
+        <div class="row" style="margin-bottom:12px">
+          <input id="m-teacher" placeholder="نام آموزگار" style="flex:1">
+          <input id="m-date" placeholder="تاریخ آزمون" style="flex:1">
+        </div>
+        <p class="muted">این اطلاعات در بالای برگه‌ی آزمون (خروجی Word) نمایش داده می‌شود.</p>
         <hr style="border:none;border-top:1px solid var(--line);margin:14px 0">
         <h3>سوالات</h3>
         <div id="q-list"></div>
@@ -1447,6 +1454,9 @@ function teacherScript() {
     const d=await api('/api/teacher/questions');
     META=d.meta||{};QUESTIONS=d.questions||[];
     document.getElementById('m-school').value=META.school||'';
+    document.getElementById('m-exam-name').value=META.examName||'';
+    document.getElementById('m-teacher').value=META.teacher||'';
+    document.getElementById('m-date').value=META.date||'';
     renderQ();
   }
   function renderQ(){
@@ -1605,7 +1615,12 @@ function teacherScript() {
     renderQ();
   });
   document.getElementById('btn-save-q').onclick=async()=>{
-    META={school:document.getElementById('m-school').value};
+    META={
+      school:document.getElementById('m-school').value,
+      examName:document.getElementById('m-exam-name').value,
+      teacher:document.getElementById('m-teacher').value,
+      date:document.getElementById('m-date').value
+    };
     const d=await api('/api/teacher/questions',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({questions:QUESTIONS,meta:META})});
     if(d.ok)toast('ذخیره شد');else toast(d.error||'خطا');
   };
