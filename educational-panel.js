@@ -1352,41 +1352,36 @@ function teacherScript() {
     DAY_KEYS.forEach(dk=>{const inp=document.getElementById('sch-hours-'+dk);hours[dk]=parseInt(inp?.value)||5;});
     const maxHours=Math.max(...Object.values(hours));
     
-    let html=`<html><head><meta charset="utf-8"><title>برنامه هفتگی</title>
-    <style>
-      body{font-family:Vazirmatn,Arial,sans-serif;direction:rtl;padding:20px}
-      .header{text-align:center;margin-bottom:20px}
-      .header h2{margin:5px 0}
-      .info{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;text-align:right}
-      table{width:100%;border-collapse:collapse;margin-top:20px}
-      th,td{border:2px solid #333;padding:12px;text-align:center}
-      th{background:#667eea;color:#fff}
-      td:first-child{background:#f0f0f0;font-weight:bold}
-    </style></head><body>
-    <div class="header"><h2>🏫 ${esc(school||'مدرسه')}</h2>
-    <h3>برنامه هفتگی - ${esc(grade||'')} - سال ${esc(year||'')}</h3></div>
-    <div class="info">
-      <div><b>کلاس:</b> ${esc(cls||'-')}</div>
-      <div><b>آموزگار:</b> ${esc(teacher||'-')}</div>
-    </div>
-    <table><thead><tr><th>روز/ساعت</th>`;
-    DAYS.forEach(d=>html+=`<th>${d}</th>`);
-    html+='</tr></thead><tbody>';
-    for(let h=1;h<=maxHours;h++){
-      html+=`<tr><td>ساعت ${toPersian(h)}</td>`;
-      DAY_KEYS.forEach(dk=>{
-        const dayHours=hours[dk]||5;
-        const cell=document.getElementById('cell-'+dk+'-'+h);
-        const val=cell?cell.value:' ';
-        if(h<=dayHours)html+=`<td>${esc(val||'')}</td>`;
+    const esc2=function(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');};
+    
+    let html='<html><head><meta charset="utf-8"><title>برنامه هفتگی</title><style>'+
+    'body{font-family:tahoma,arial,sans-serif;direction:rtl;padding:20px}'+
+    'table{width:100%;border-collapse:collapse;margin-top:15px}'+
+    'th,td{border:1px solid #333;padding:8px;text-align:center}'+
+    'th{background:#667eea;color:#fff}'+
+    'td:first-child{background:#eee}'+
+    '</style></head><body>'+
+    '<div style="text-align:center"><h2>'+esc2(school||'مدرسه')+'</h2>'+
+    '<p>برنامه هفتگی - '+esc2(grade)+' - سال '+esc2(year)+'</p>'+
+    '<p>کلاس: '+esc2(cls)+' | آموزگار: '+esc2(teacher)+'</p></div>'+
+    '<table><tr><th>روز/ساعت</th>';
+    DAYS.forEach(function(d){html+='<th>'+d+'</th>';});
+    html+='</tr>';
+    for(var h=1;h<=maxHours;h++){
+      html+='<tr><td>ساعت '+toPersian(h)+'</td>';
+      DAY_KEYS.forEach(function(dk){
+        var dayHours=hours[dk]||5;
+        var cell=document.getElementById('cell-'+dk+'-'+h);
+        var val=cell?cell.value:'';
+        if(h<=dayHours)html+='<td>'+esc2(val)+'</td>';
         else html+='<td></td>';
       });
       html+='</tr>';
     }
-    html+='</tbody></table></body></html>';
+    html+='</table></body></html>';
     
-    const blob=new Blob([html],{type:'application/msword'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    var blob=new Blob([html],{type:'application/msword'});
+    var a=document.createElement('a');a.href=URL.createObjectURL(blob);
     a.download='برنامه-هفتگی.doc';a.click();
   };
   
