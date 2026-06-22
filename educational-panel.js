@@ -842,8 +842,7 @@ async function studentPage(env, id) {
         }else{
           body='<textarea data-q="'+q.id+'"></textarea>';
         }
-        const img=q.image?'<img src="'+q.image+'" class="imgprev">':'';
-        return '<div class="q-block"><div class="qhead"><b>'+(i+1)+'. '+qHtml(q)+'</b><span class="badge">'+typeLabel(q.type)+'</span></div>'+img+body+'</div>';
+        return '<div class="q-block"><div class="qhead"><b>'+(i+1)+'. '+qHtml(q)+'</b><span class="badge">'+typeLabel(q.type)+'</span></div>'+body+'</div>';
       }).join('');
     }
 
