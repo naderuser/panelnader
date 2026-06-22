@@ -341,6 +341,37 @@ async function handleApi(req, env, url, path) {
     return json({ ok: true, auth: true, student: safeStudent });
   }
 
+  // ============== AI CHAT (PUBLIC - No Auth Required) ==============
+
+  if (path === "/api/ai/chat" && method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    const messages = body.messages || [];
+    const apiKey = env.GROQ_API_KEY;
+    if (!apiKey) return json({ error: "کلید GROQ_API_KEY تنظیم نشده. لطفاً در Cloudflare Dashboard متغیر محیطی GROQ_API_KEY را تنظیم کنید." }, 500);
+    
+    try {
+      const aiRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + apiKey },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "system", content: "You are a helpful assistant for Iranian teachers and students. Always respond in Persian/Farsi. Be concise and helpful." }, ...messages.slice(-10)],
+          max_tokens: 1024
+        })
+      });
+      if (!aiRes.ok) {
+        const errText = await aiRes.text();
+        console.error("Groq API Error:", errText);
+        return json({ error: "خطای API: " + errText }, aiRes.status);
+      }
+      const aiData = await aiRes.json();
+      return json({ ok: true, content: aiData.choices?.[0]?.message?.content || "" });
+    } catch (e) {
+      console.error("AI Error:", e);
+      return json({ error: "خطا: " + e.message }, 500);
+    }
+  }
+
   // ============== TEACHER APIs ==============
 
   if (path.startsWith("/api/teacher/")) {
@@ -760,35 +791,6 @@ async function handleApi(req, env, url, path) {
       
       const questions = await getQuestions(env);
       return wordResponse(examWord(meta, questions), "برگه-آزمون.doc");
-    }
-
-    // ============== AI CHAT ==============
-
-    if (path === "/api/ai/chat" && method === "POST") {
-      const body = await req.json().catch(() => ({}));
-      const messages = body.messages || [];
-      const apiKey = env.GROQ_API_KEY;
-      if (!apiKey) return json({ error: "کلید GROQ_API_KEY تنظیم نشده" }, 500);
-      
-      try {
-        const aiRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + apiKey },
-          body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
-            messages: [{ role: "system", content: "You are a helpful assistant for Iranian teachers. Always respond in Persian/Farsi." }, ...messages.slice(-10)],
-            max_tokens: 1024
-          })
-        });
-        if (!aiRes.ok) {
-          const errText = await aiRes.text();
-          return json({ error: "Groq: " + errText }, aiRes.status);
-        }
-        const aiData = await aiRes.json();
-        return json({ ok: true, content: aiData.choices?.[0]?.message?.content || "" });
-      } catch (e) {
-        return json({ error: "Error: " + e.message }, 500);
-      }
     }
 
     // ============== DASHBOARD STATS ==============
