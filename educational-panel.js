@@ -418,6 +418,8 @@ function wordResponse(bodyHtml, filename) {
       .frac .fn{display:block;border-bottom:1.5px solid #000;padding:0 4px}
       .frac .fd{display:block;padding:0 4px}
       .shape{display:inline-block;vertical-align:middle;line-height:1;margin:0 2px}
+      .drag-shape{cursor:move;user-select:none}
+      .drag-shape:hover{opacity:0.8}
       .ldiv{display:inline-block;border-collapse:collapse;margin:6px 2px;vertical-align:top}
       .ldiv td{padding:2px 8px;vertical-align:top}
       .ldiv .divisor{border-right:1.5px solid #000}
@@ -583,6 +585,8 @@ const SHARED_CSS = `
   .frac .fd{display:block;padding:0 5px}
   .shape{display:inline-block;vertical-align:middle;line-height:1;margin:0 2px}
   .shape svg{display:block}
+  .drag-shape{cursor:move;user-select:none}
+  .drag-shape:hover{opacity:0.8}
   .ldiv{display:inline-block;border-collapse:collapse;margin:6px 2px;vertical-align:top}
   .ldiv td{border:none;padding:2px 8px;font-size:15px;vertical-align:top}
   .ldiv .divisor{border-right:2px solid currentColor}
@@ -1504,12 +1508,13 @@ function teacherScript() {
     updHtml(i);
   }
   window.insSym=(i,s)=>insHtmlAt(i,escA(s));
-  window.insShape=(i,s)=>insHtmlAt(i,'<span class="shape" contenteditable="false" style="font-size:'+ssize(i)+'px">'+escA(s)+'</span>&#8203;');
-  window.insSvg=(i,si)=>{const s=SVG_SHAPES[si];if(!s)return;const z=ssize(i);const svg=s.svg.replace('<svg','<svg width="'+z+'" height="'+z+'"');insHtmlAt(i,'<span class="shape" contenteditable="false">'+svg+'</span>&#8203;');};
-  window.insFrac=(i)=>{const n=prompt('صورت کسر:');if(n===null)return;const d=prompt('مخرج کسر:');if(d===null)return;insHtmlAt(i,'<span class="frac" contenteditable="false"><span class="fn">'+escA(n)+'</span><span class="fd">'+escA(d)+'</span></span>&#8203;');};
-  window.insDiv=(i)=>{const dd=prompt('مقسوم:','')||'مقسوم';const dv=prompt('مقسوم‌علیه:','')||'مقسوم‌علیه';insHtmlAt(i,'<table class="ldiv"><tr><td class="dividend">'+escA(dd)+'</td><td class="divisor">'+escA(dv)+'</td></tr><tr><td class="work"><br></td><td class="quotient">خارج‌قسمت</td></tr></table>&#8203;');};
+  window.insShape=(i,s)=>insHtmlAt(i,'<span class="shape drag-shape" style="font-size:'+ssize(i)+'px;cursor:move;display:inline-block">'+escA(s)+'</span>&#8203;');
+  window.insSvg=(i,si)=>{const s=SVG_SHAPES[si];if(!s)return;const z=ssize(i);const svg=s.svg.replace('<svg','<svg width="'+z+'" height="'+z+'"');insHtmlAt(i,'<span class="shape drag-shape" contenteditable="false" style="cursor:move;display:inline-block">'+svg+'</span>&#8203;');};
+  window.insFrac=(i)=>{const n=prompt('صورت کسر:');if(n===null)return;const d=prompt('مخرج کسر:');if(d===null)return;insHtmlAt(i,'<span class="frac drag-shape" contenteditable="false"><span class="fn">'+escA(n)+'</span><span class="fd">'+escA(d)+'</span></span>&#8203;');};
+  window.insDiv=(i)=>{const dd=prompt('مقسوم:','')||'مقسوم';const dv=prompt('مقسوم‌علیه:','')||'مقسوم‌علیه';insHtmlAt(i,'<table class="ldiv drag-shape" contenteditable="false"><tr><td class="dividend">'+escA(dd)+'</td><td class="divisor">'+escA(dv)+'</td></tr><tr><td class="work"><br></td><td class="quotient">خارج‌قسمت</td></tr></table>&#8203;');};
   window.updHtml=(i)=>{const el=richEl(i);if(!el)return;const c=el.cloneNode(true);c.querySelectorAll('.shape').forEach(s=>{s.style.outline='';});QUESTIONS[i].text=c.innerHTML;QUESTIONS[i].rich=true;};
   let SELSHAPE=null;
+  let DRAGSTATE=null;
   document.addEventListener('click',function(e){
     const sh=e.target&&e.target.closest?e.target.closest('.shape'):null;
     if(sh&&sh.closest('.rich')){
@@ -1527,6 +1532,46 @@ function teacherScript() {
       updHtml(i);
     }
   };
+  
+  // ---- Drag & Drop for shapes ----
+  document.addEventListener('mousedown',function(e){
+    const el=e.target.closest?e.target.closest('.drag-shape'):null;
+    if(!el||!el.closest('.rich'))return;
+    e.preventDefault();
+    DRAGSTATE={el:el,startX:e.clientX-el.offsetLeft,startY:e.clientY-el.offsetTop,parent:el.parentNode,nextSibling:el.nextSibling};
+  });
+  document.addEventListener('mousemove',function(e){
+    if(!DRAGSTATE)return;
+    e.preventDefault();
+    DRAGSTATE.el.style.position='absolute';
+    DRAGSTATE.el.style.left=(e.clientX-DRAGSTATE.startX)+'px';
+    DRAGSTATE.el.style.top=(e.clientY-DRAGSTATE.startY)+'px';
+  });
+  document.addEventListener('mouseup',function(e){
+    if(!DRAGSTATE)return;
+    const ds=DRAGSTATE;
+    DRAGSTATE=null;
+    if(!ds.parent)return;
+    ds.el.style.position='';
+    ds.el.style.left='';
+    ds.el.style.top='';
+    // Find target element
+    const richEl2=ds.el.closest('.rich');
+    if(!richEl2)return;
+    const rects=Array.from(richEl2.querySelectorAll('.drag-shape')).map(x=>{const r=x.getBoundingClientRect();return{el:x,rect:r}}).filter(x=>x.el!==ds.el);
+    let minDist=Infinity,targetEl=null;
+    rects.forEach(x=>{
+      const cx=x.rect.left+x.rect.width/2;
+      const cy=x.rect.top+x.rect.height/2;
+      const dist=Math.sqrt((e.clientX-cx)**2+(e.clientY-cy)**2);
+      if(dist<minDist){minDist=dist;targetEl=x.el;}
+    });
+    if(targetEl){
+      const targetNext=targetEl.nextSibling;
+      ds.parent.insertBefore(ds.el,targetNext);
+    }
+    updHtml(parseInt(richEl2.getAttribute('data-qd'),10));
+  });
   window.loadImg=(i,input)=>{
     const f=input.files[0];if(!f)return;
     const rd=new FileReader();
