@@ -341,37 +341,6 @@ async function handleApi(req, env, url, path) {
     return json({ ok: true, auth: true, student: safeStudent });
   }
 
-  // ============== AI CHAT (PUBLIC - No Auth Required) ==============
-
-  if (path === "/api/ai/chat" && method === "POST") {
-    const body = await req.json().catch(() => ({}));
-    const messages = body.messages || [];
-    const apiKey = env.GROQ_API_KEY;
-    if (!apiKey) return json({ error: "کلید GROQ_API_KEY تنظیم نشده. لطفاً در Cloudflare Dashboard متغیر محیطی GROQ_API_KEY را تنظیم کنید." }, 500);
-    
-    try {
-      const aiRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + apiKey },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [{ role: "system", content: "You are a helpful assistant for Iranian teachers and students. Always respond in Persian/Farsi. Be concise and helpful." }, ...messages.slice(-10)],
-          max_tokens: 1024
-        })
-      });
-      if (!aiRes.ok) {
-        const errText = await aiRes.text();
-        console.error("Groq API Error:", errText);
-        return json({ error: "خطای API: " + errText }, aiRes.status);
-      }
-      const aiData = await aiRes.json();
-      return json({ ok: true, content: aiData.choices?.[0]?.message?.content || "" });
-    } catch (e) {
-      console.error("AI Error:", e);
-      return json({ error: "خطا: " + e.message }, 500);
-    }
-  }
-
   // ============== TEACHER APIs ==============
 
   if (path.startsWith("/api/teacher/")) {
@@ -791,6 +760,35 @@ async function handleApi(req, env, url, path) {
       
       const questions = await getQuestions(env);
       return wordResponse(examWord(meta, questions), "برگه-آزمون.doc");
+    }
+
+    // ============== AI CHAT ==============
+
+    if (path === "/api/ai/chat" && method === "POST") {
+      const body = await req.json().catch(() => ({}));
+      const messages = body.messages || [];
+      const apiKey = env.GROQ_API_KEY;
+      if (!apiKey) return json({ error: "کلید GROQ_API_KEY تنظیم نشده" }, 500);
+      
+      try {
+        const aiRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + apiKey },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: [{ role: "system", content: "You are a helpful assistant for Iranian teachers. Always respond in Persian/Farsi." }, ...messages.slice(-10)],
+            max_tokens: 1024
+          })
+        });
+        if (!aiRes.ok) {
+          const errText = await aiRes.text();
+          return json({ error: "Groq: " + errText }, aiRes.status);
+        }
+        const aiData = await aiRes.json();
+        return json({ ok: true, content: aiData.choices?.[0]?.message?.content || "" });
+      } catch (e) {
+        return json({ error: "Error: " + e.message }, 500);
+      }
     }
 
     // ============== DASHBOARD STATS ==============
@@ -1536,8 +1534,8 @@ function studentPortalPage() {
           <input type="password" id="student-pass" placeholder="رمز عبور" autocomplete="current-password">
         </div>
       </div>
-      <p class="muted text-danger mt-2" id="student-login-error"></p>
-      <button class="btn btn-success btn-lg mt-4" id="student-login-btn">ورود</button>
+      <p class="muted text-danger mt-2" id="login-error"></p>
+      <button class="btn btn-success btn-lg mt-4" id="btn-login">ورود</button>
     </div>
     
     <!-- Dashboard -->
@@ -1548,7 +1546,7 @@ function studentPortalPage() {
             <h2>سلام، <span id="student-name">---</span> 👋</h2>
             <p class="muted">خوش آمدید!</p>
           </div>
-          <button class="btn btn-secondary" id="student-logout-btn">🚪 خروج</button>
+          <button class="btn btn-secondary" id="btn-logout">🚪 خروج</button>
         </div>
       </div>
       
@@ -1684,29 +1682,31 @@ function studentPortalPage() {
     }
     
     // Login
-    document.getElementById('student-login-btn').onclick = async function() {
-      var studentId = document.getElementById('student-id').value.trim();
-      var pass = document.getElementById('student-pass').value.trim();
+    $('btn-login').addEventListener('click', async () => {
+      const studentId = $('student-id').value.trim();
+      const pass = $('student-pass').value.trim();
       if (!studentId || !pass) {
-        document.getElementById('student-login-error').textContent = 'Please fill all fields';
+        $('login-error').textContent = 'لطفاً همه فیلدها را پر کنید';
         return;
       }
-      var res = await fetch('/api/student/login', {
+      
+      const res = await fetch('/api/student/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId: studentId, password: pass })
+        body: JSON.stringify({ studentId, password: pass })
       });
-      var data = await res.json();
+      const data = await res.json();
+      
       if (data.ok) {
         CURRENT_STUDENT = data.student;
         showDashboard();
       } else {
-        document.getElementById('student-login-error').textContent = data.error || 'Login error';
+        $('login-error').textContent = data.error || 'خطا در ورود';
       }
-    };
+    });
     
     // Logout
-    $('student-logout-btn').addEventListener('click', async () => {
+    $('btn-logout').addEventListener('click', async () => {
       await fetch('/api/student/logout', { method: 'POST' });
       CURRENT_STUDENT = null;
       $('dashboard').classList.add('hidden');
@@ -2518,22 +2518,21 @@ function teacherScript() {
   }
   
   // Login
-  document.getElementById('btn-login').onclick = async function() {
-    var pass = document.getElementById('login-pass').value;
-    var res = await fetch('/api/teacher/login', {
+  $('btn-login').addEventListener('click', async () => {
+    const pass = $('login-pass').value;
+    const res = await api('/api/teacher/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: pass })
     });
-    var data = await res.json();
-    if (data.ok) {
-      document.getElementById('login-panel').classList.add('hidden');
-      document.getElementById('dashboard').classList.remove('hidden');
+    if (res.ok) {
+      $('login-panel').classList.add('hidden');
+      $('dashboard').classList.remove('hidden');
       loadAll();
     } else {
-      document.getElementById('login-error').textContent = data.error || 'Login error';
+      $('login-error').textContent = res.error || 'خطا در ورود';
     }
-  };
+  });
   
   // Logout
   $('btn-logout').addEventListener('click', async () => {
@@ -2866,18 +2865,17 @@ function teacherScript() {
   function renderStudents() {
     const body = $('students-body');
     if (!STUDENTS.length) {
-      body.innerHTML = '<tr><td colspan="7" class="text-center muted">هنوز دانش‌آموزی ثبت نشده</td></tr>';
+      body.innerHTML = '<tr><td colspan="6" class="text-center muted">هنوز دانش‌آموزی ثبت نشده</td></tr>';
       return;
     }
     body.innerHTML = STUDENTS.map(s => {
       const cls = CLASSES.find(c => c.id === s.classId);
       return '<tr>' +
-        '<td><code style="background:#e0f2fe;padding:2px 6px;border-radius:4px;color:#0369a1">' + esc(s.id || '') + '</code></td>' +
         '<td>' + esc(s.name) + '</td>' +
         '<td>' + esc(s.fatherName || '') + '</td>' +
         '<td>' + esc(s.nationalId || '') + '</td>' +
         '<td>' + (cls ? esc(cls.name) : '-') + '</td>' +
-        '<td><code style="background:#fef3c7;padding:2px 6px;border-radius:4px">' + esc(s.tempPassword || '*****') + '</code></td>' +
+        '<td><code>' + esc(s.tempPassword || '*****') + '</code></td>' +
         '<td><button class="btn btn-danger btn-sm" onclick="deleteStudent(\\'' + s.id + '\\')">🗑️</button></td>' +
       '</tr>';
     }).join('');
@@ -2902,8 +2900,7 @@ function teacherScript() {
       res.student.tempPassword = res.student.password;
       STUDENTS.unshift(res.student);
       renderStudents();
-      // Show both ID and password
-      alert('✅ دانش‌آموز اضافه شد!\n\n📋 کد دانش‌آموزی: ' + res.student.id + '\n🔑 رمز عبور: ' + res.student.password + '\n\n⚠️ این اطلاعات را به دانش‌آموز بدهید!');
+      toast('دانش‌آموز اضافه شد. رمز: ' + res.student.password);
       $('new-student-name').value = '';
       $('new-student-father').value = '';
       $('new-student-code').value = '';
