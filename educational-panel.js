@@ -919,6 +919,7 @@ function teacherPage() {
         <div class="tab" data-tab="schedule">📅 برنامه هفتگی</div>
         <div class="tab" data-tab="tables">📊 جدول‌ساز</div>
         <div class="tab" data-tab="scan">📷 اسکنر</div>
+        <div class="tab" data-tab="translate">🌐 ترجمه</div>
         <div class="tab" data-tab="resize">🗜️ کاهش حجم</div>
         <div class="tab" data-tab="crop">✂️ برش عکس</div>
         <div class="tab" data-tab="ai">🤖 هوش مصنوعی</div>
@@ -1148,6 +1149,44 @@ function teacherPage() {
               <span>🗑️</span> پاک کردن
             </button>
           </div>
+        </div>
+      </div>
+
+      <!-- ترجمه متن -->
+      <div class="card tab-content hidden" id="tab-translate">
+        <div class="section-header">
+          <div>
+            <h3>🌐 ترجمه متن</h3>
+            <p class="muted">متن را از فارسی به انگلیسی یا برعکس ترجمه کنید</p>
+          </div>
+        </div>
+        <div style="margin-bottom:16px">
+          <label style="margin-left:16px">زبان مبدا:</label>
+          <select id="tl-from" style="padding:8px;border:1px solid #ddd;border-radius:6px">
+            <option value="fa">فارسی</option>
+            <option value="en">انگلیسی</option>
+          </select>
+          <button class="btn sm" onclick="tlSwap()" style="margin:0 8px">⇄</button>
+          <label style="margin-left:16px">زبان مقصد:</label>
+          <select id="tl-to" style="padding:8px;border:1px solid #ddd;border-radius:6px">
+            <option value="en">انگلیسی</option>
+            <option value="fa">فارسی</option>
+          </select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div>
+            <label>متن ورودی:</label>
+            <textarea id="tl-input" rows="8" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:8px;resize:vertical;font-family:inherit" placeholder="متن خود را اینجا بنویسید..."></textarea>
+          </div>
+          <div>
+            <label>ترجمه:</label>
+            <textarea id="tl-output" rows="8" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:8px;resize:vertical;font-family:inherit;background:#f8fafc" readonly placeholder="ترجمه اینجا نمایش داده می‌شود..."></textarea>
+          </div>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:10px">
+          <button class="btn primary" id="btn-translate">🌐 ترجمه کن</button>
+          <button class="btn" onclick="tlCopy()">📋 کپی ترجمه</button>
+          <button class="btn gray" onclick="tlClear()">🗑️ پاک کردن</button>
         </div>
       </div>
 
@@ -1703,6 +1742,50 @@ function teacherScript() {
 
   // ---- جدول\u200cساز ----
 
+
+  // ---- Translation ----
+  document.getElementById('tl-from').onchange=function(){
+    var f=this.value;
+    var t=document.getElementById('tl-to');
+    if(f===t.value){t.value=f==='fa'?'en':'fa';}
+  };
+  
+  window.tlSwap=function(){
+    var f=document.getElementById('tl-from');
+    var t=document.getElementById('tl-to');
+    var tmp=f.value;f.value=t.value;t.value=tmp;
+    var inp=document.getElementById('tl-input');
+    var out=document.getElementById('tl-output');
+    var t2=inp.value;inp.value=out.value;out.value=t2;
+  };
+  
+  window.tlCopy=function(){
+    var txt=document.getElementById('tl-output').value;
+    if(!txt){toast('متنی وارد نشده');return;}
+    navigator.clipboard.writeText(txt).then(()=>toast('کپی شد ✅'));
+  };
+  
+  window.tlClear=function(){
+    document.getElementById('tl-input').value='';
+    document.getElementById('tl-output').value='';
+  };
+  
+  document.getElementById('btn-translate').onclick=async function(){
+    var text=document.getElementById('tl-input').value.trim();
+    if(!text){toast('متنی وارد نشده');return;}
+    var from=document.getElementById('tl-from').value;
+    var to=document.getElementById('tl-to').value;
+    var btn=this;btn.disabled=true;btn.textContent='⏳ در حال ترجمه...';
+    try{
+      var res=await fetch('https://api.mymemory.translated.net/get?q='+encodeURIComponent(text)+'&langpair='+from+'|'+to);
+      var data=await res.json();
+      if(data.responseStatus===200 && data.responseData){
+        document.getElementById('tl-output').value=data.responseData.translatedText;
+        toast('ترجمه شد ✅');
+      }else{toast('خطا در ترجمه');}
+    }catch(e){toast('خطا در اتصال');}
+    btn.disabled=false;btn.textContent='🌐 ترجمه کن';
+  };
   // ---- اسکنر عکس حرفه‌ای ----
   let SCANIMG=null, SCANORIG=null;
   
