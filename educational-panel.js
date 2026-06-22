@@ -2518,26 +2518,22 @@ function teacherScript() {
   }
   
   // Login
-  $('btn-login').addEventListener('click', async () => {
-    console.log('Teacher login clicked');
-    const pass = $('login-pass').value;
-    console.log('Password:', pass);
-    const res = await api('/api/teacher/login', {
+  document.getElementById('btn-login').onclick = async function() {
+    var pass = document.getElementById('login-pass').value;
+    var res = await fetch('/api/teacher/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: pass })
     });
-    console.log('Response:', res);
-    if (res.ok) {
-      console.log('Login success');
-      $('login-panel').classList.add('hidden');
-      $('dashboard').classList.remove('hidden');
+    var data = await res.json();
+    if (data.ok) {
+      document.getElementById('login-panel').classList.add('hidden');
+      document.getElementById('dashboard').classList.remove('hidden');
       loadAll();
     } else {
-      console.log('Login error:', res.error);
-      $('login-error').textContent = res.error || 'خطا در ورود';
+      document.getElementById('login-error').textContent = data.error || 'Login error';
     }
-  });
+  };
   
   // Logout
   $('btn-logout').addEventListener('click', async () => {
