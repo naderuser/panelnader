@@ -985,31 +985,28 @@ function teacherPage() {
       <div class="card tab-content hidden" id="tab-tables">
         <h3>📊 جدول‌ساز</h3>
         <div class="row" style="margin-bottom:16px">
-          <input id="tbl-school" placeholder="نام مدرسه" style="flex:1">
-          <input id="tbl-year" placeholder="سال تحصیلی" style="flex:1">
-        </div>
-        <div class="row" style="margin-bottom:16px">
-          <input id="tbl-topic" placeholder="موضوع" style="flex:1">
-          <input id="tbl-principal" placeholder="نام مدیر" style="flex:1">
-        </div>
-        <div class="row" style="margin-bottom:16px">
-          <input id="tbl-class" placeholder="نام کلاس" style="flex:1">
-          <input id="tbl-teacher" placeholder="نام آموزگار" style="flex:1">
+          <div>
+            <label style="display:block;margin-bottom:4px">تعداد سطر:</label>
+            <input type="number" id="tbl-rows" value="5" min="1" max="50" style="width:100px;padding:8px;border:1px solid #ddd;border-radius:6px">
+          </div>
+          <div>
+            <label style="display:block;margin-bottom:4px">تعداد ستون:</label>
+            <input type="number" id="tbl-cols" value="4" min="1" max="20" style="width:100px;padding:8px;border:1px solid #ddd;border-radius:6px">
+          </div>
+          <div>
+            <label style="display:block;margin-bottom:4px">عنوان جدول:</label>
+            <input type="text" id="tbl-title" placeholder="مثال: لیست نمرات" style="width:200px;padding:8px;border:1px solid #ddd;border-radius:6px">
+          </div>
         </div>
         <div class="schedule-table-wrap">
           <table class="schedule-table" id="custom-table">
-            <thead><tr><th>ردیف</th><th>زنگ اول</th><th>زنگ دوم</th><th>زنگ سوم</th><th>زنگ چهارم</th><th>زنگ پنجم</th></tr></thead>
+            <thead id="custom-table-head"></thead>
             <tbody id="custom-table-body"></tbody>
           </table>
         </div>
-        <div style="margin-bottom:16px">
-          <label style="margin-left:16px">تعداد سطرها:</label>
-          <input type="number" id="tbl-rows" value="5" min="1" max="30" style="width:60px;padding:6px;border:1px solid #ddd;border-radius:6px">
-        </div>
         <button class="btn primary" id="btn-gen-table">🔄 ساخت جدول</button>
-        <button class="btn" id="btn-print-table">🖨️ چاپ</button>
         <button class="btn sec" id="btn-word-table">📄 دانلود Word</button>
-        <button class="btn gray" id="btn-pdf-table">📕 دانلود PDF</button>
+        <button class="btn gray" id="btn-excel-table">📊 دانلود Excel</button>
       </div>
 
       <!-- اسکنر عکس -->
@@ -1342,73 +1339,70 @@ function teacherScript() {
   // ---- جدول ساز ----
   document.getElementById('btn-gen-table').onclick=function(){
     var rows=parseInt(document.getElementById('tbl-rows').value)||5;
-    var body=document.getElementById('custom-table-body');
-    var html='';
+    var cols=parseInt(document.getElementById('tbl-cols').value)||4;
+    var thead=document.getElementById('custom-table-head');
+    var tbody=document.getElementById('custom-table-body');
+    var h='<tr><th>ردیف</th>';
+    for(var c=1;c<=cols;c++){h=h+'<th>ستون '+c+'</th>';}
+    h=h+'</tr>';
+    thead.innerHTML=h;
+    var b='';
     for(var r=1;r<=rows;r++){
-      html=html+'<tr><td>'+r+'</td>';
-      for(var c=1;c<=5;c++){
-        html=html+'<td><textarea style="width:100%;min-height:40px;border:1px solid #ddd;padding:6px;border-radius:4px;font-family:inherit" id="t'+r+c+'"></textarea></td>';
+      b=b+'<tr><td>'+r+'</td>';
+      for(var c=1;c<=cols;c++){
+        b=b+'<td><input type="text" id="t'+r+'_'+c+'" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px"></td>';
       }
-      html=html+'</tr>';
+      b=b+'</tr>';
     }
-    body.innerHTML=html;
-  };
-  
-  document.getElementById('btn-print-table').onclick=function(){
-    var school=document.getElementById('tbl-school').value;
-    var year=document.getElementById('tbl-year').value;
-    var topic=document.getElementById('tbl-topic').value;
-    var principal=document.getElementById('tbl-principal').value;
-    var cls=document.getElementById('tbl-class').value;
-    var teacher=document.getElementById('tbl-teacher').value;
-    var rows=parseInt(document.getElementById('tbl-rows').value)||5;
-    var style='<style>@font-face{font-family:"BNazanin";src:url(https://cdn.jsdelivr.net/gh/naderuser/bnazanin@main/BNazanin.ttf)}@media print{@page{size:A4 portrait}}body{direction:rtl;font-family:"BNazanin",tahoma,Arial;padding:15px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee;font-weight:bold}</style>';
-    var header='<div style="text-align:center"><h2>'+school+'</h2><p><b>سال:</b> '+year+' | <b>موضوع:</b> '+topic+'</p><p><b>مدیر:</b> '+principal+' | <b>آموزگار:</b> '+teacher+' | <b>کلاس:</b> '+cls+'</p></div>';
-    var table='<table><tr><th>ردیف</th><th>زنگ اول</th><th>زنگ دوم</th><th>زنگ سوم</th><th>زنگ چهارم</th><th>زنگ پنجم</th></tr>';
-    for(var r=1;r<=rows;r++){
-      table=table+'<tr><td>'+r+'</td>';
-      for(var c=1;c<=5;c++){
-        var el=document.getElementById('t'+r+c);
-        table=table+'<td>'+(el?el.value:'')+'</td>';
-      }
-      table=table+'</tr>';
-    }
-    table=table+'</table>';
-    var w=window.open('','_blank');
-    w.document.write('<html><head><meta charset="utf-8">'+style+'</head><body>'+header+table+'</body></html>');
-    w.document.close();
-    w.print();
+    tbody.innerHTML=b;
   };
   
   document.getElementById('btn-word-table').onclick=function(){
-    var school=document.getElementById('tbl-school').value;
-    var year=document.getElementById('tbl-year').value;
-    var topic=document.getElementById('tbl-topic').value;
-    var principal=document.getElementById('tbl-principal').value;
-    var cls=document.getElementById('tbl-class').value;
-    var teacher=document.getElementById('tbl-teacher').value;
+    var title=document.getElementById('tbl-title').value||'جدول';
     var rows=parseInt(document.getElementById('tbl-rows').value)||5;
-    var style='<style>@font-face{font-family:"BNazanin";src:url(https://cdn.jsdelivr.net/gh/naderuser/bnazanin@main/BNazanin.ttf)}body{direction:rtl;font-family:"BNazanin",tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee;font-weight:bold}</style>';
-    var header='<div style="text-align:center"><h2>'+school+'</h2><p><b>سال:</b> '+year+' | <b>موضوع:</b> '+topic+'</p><p><b>مدیر:</b> '+principal+' | <b>آموزگار:</b> '+teacher+' | <b>کلاس:</b> '+cls+'</p></div>';
-    var table='<table><tr><th>ردیف</th><th>زنگ اول</th><th>زنگ دوم</th><th>زنگ سوم</th><th>زنگ چهارم</th><th>زنگ پنجم</th></tr>';
+    var cols=parseInt(document.getElementById('tbl-cols').value)||4;
+    var style='<style>body{direction:rtl;font-family:tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse;margin-top:15px}th,td{border:1px solid #333;padding:8px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee}</style>';
+    var h='<h2 style="text-align:center">'+title+'</h2><table><tr><th>ردیف</th>';
+    for(var c=1;c<=cols;c++){h=h+'<th>ستون '+c+'</th>';}
+    h=h+'</tr>';
     for(var r=1;r<=rows;r++){
-      table=table+'<tr><td>'+r+'</td>';
-      for(var c=1;c<=5;c++){
-        var el=document.getElementById('t'+r+c);
-        table=table+'<td>'+(el?el.value:'')+'</td>';
+      h=h+'<tr><td>'+r+'</td>';
+      for(var c=1;c<=cols;c++){
+        var el=document.getElementById('t'+r+'_'+c);
+        h=h+'<td>'+(el?el.value:'')+'</td>';
       }
-      table=table+'</tr>';
+      h=h+'</tr>';
     }
-    table=table+'</table>';
-    var blob=new Blob(['<html><head><meta charset="utf-8">'+style+'</head><body>'+header+table+'</body></html>'],{type:'application/msword'});
+    h=h+'</table>';
+    var blob=new Blob(['<html><head><meta charset="utf-8">'+style+'</head><body>'+h+'</body></html>'],{type:'application/msword'});
     var a=document.createElement('a');
     a.href=URL.createObjectURL(blob);
-    a.download='جدول.doc';
+    a.download=title+'.doc';
     a.click();
   };
   
-  document.getElementById('btn-pdf-table').onclick=function(){
-    document.getElementById('btn-print-table').onclick();
+  document.getElementById('btn-excel-table').onclick=function(){
+    var title=document.getElementById('tbl-title').value||'جدول';
+    var rows=parseInt(document.getElementById('tbl-rows').value)||5;
+    var cols=parseInt(document.getElementById('tbl-cols').value)||4;
+    var html='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>table{direction:rtl}th,td{border:1px solid #333;padding:6px}th{background:#667eea;color:#fff;text-align:center}</style></head><body>';
+    html=html+'<h2>'+title+'</h2><table><tr><th>ردیف</th>';
+    for(var c=1;c<=cols;c++){html=html+'<th>ستون '+c+'</th>';}
+    html=html+'</tr>';
+    for(var r=1;r<=rows;r++){
+      html=html+'<tr><td>'+r+'</td>';
+      for(var c=1;c<=cols;c++){
+        var el=document.getElementById('t'+r+'_'+c);
+        html=html+'<td>'+(el?el.value:'')+'</td>';
+      }
+      html=html+'</tr>';
+    }
+    html=html+'</table></body></html>';
+    var blob=new Blob(['\ufeff'+html],{type:'application/vnd.ms-excel'});
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=title+'.xls';
+    a.click();
   };
 
   // ---- دانش‌آموزان ----
