@@ -1536,8 +1536,8 @@ function studentPortalPage() {
           <input type="password" id="student-pass" placeholder="رمز عبور" autocomplete="current-password">
         </div>
       </div>
-      <p class="muted text-danger mt-2" id="login-error"></p>
-      <button class="btn btn-success btn-lg mt-4" id="btn-login">ورود</button>
+      <p class="muted text-danger mt-2" id="student-login-error"></p>
+      <button class="btn btn-success btn-lg mt-4" id="student-login-btn">ورود</button>
     </div>
     
     <!-- Dashboard -->
@@ -1548,7 +1548,7 @@ function studentPortalPage() {
             <h2>سلام، <span id="student-name">---</span> 👋</h2>
             <p class="muted">خوش آمدید!</p>
           </div>
-          <button class="btn btn-secondary" id="btn-logout">🚪 خروج</button>
+          <button class="btn btn-secondary" id="student-logout-btn">🚪 خروج</button>
         </div>
       </div>
       
@@ -1684,31 +1684,34 @@ function studentPortalPage() {
     }
     
     // Login
-    $('btn-login').addEventListener('click', async () => {
+    $('student-login-btn').addEventListener('click', async () => {
+      console.log('Login button clicked');
       const studentId = $('student-id').value.trim();
       const pass = $('student-pass').value.trim();
       if (!studentId || !pass) {
-        $('login-error').textContent = 'لطفاً همه فیلدها را پر کنید';
+        $('student-login-error').textContent = 'لطفاً همه فیلدها را پر کنید';
         return;
       }
       
+      console.log('Sending login request for:', studentId);
       const res = await fetch('/api/student/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ studentId, password: pass })
       });
       const data = await res.json();
+      console.log('Login response:', data);
       
       if (data.ok) {
         CURRENT_STUDENT = data.student;
         showDashboard();
       } else {
-        $('login-error').textContent = data.error || 'خطا در ورود';
+        $('student-login-error').textContent = data.error || 'خطا در ورود';
       }
     });
     
     // Logout
-    $('btn-logout').addEventListener('click', async () => {
+    $('student-logout-btn').addEventListener('click', async () => {
       await fetch('/api/student/logout', { method: 'POST' });
       CURRENT_STUDENT = null;
       $('dashboard').classList.add('hidden');
@@ -2521,17 +2524,22 @@ function teacherScript() {
   
   // Login
   $('btn-login').addEventListener('click', async () => {
+    console.log('Teacher login clicked');
     const pass = $('login-pass').value;
+    console.log('Password:', pass);
     const res = await api('/api/teacher/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: pass })
     });
+    console.log('Response:', res);
     if (res.ok) {
+      console.log('Login success');
       $('login-panel').classList.add('hidden');
       $('dashboard').classList.remove('hidden');
       loadAll();
     } else {
+      console.log('Login error:', res.error);
       $('login-error').textContent = res.error || 'خطا در ورود';
     }
   });
