@@ -973,6 +973,8 @@ function teacherPage() {
         </div>
         <button class="btn primary" id="btn-gen-schedule">🔄 ساخت جدول</button>
         <button class="btn" id="btn-print-schedule">🖨️ چاپ</button>
+        <button class="btn sec" id="btn-word-schedule">📄 دانلود Word</button>
+        <button class="btn gray" id="btn-pdf-schedule">📕 دانلود PDF</button>
       </div>
 
       <!-- جدول / اکسل -->
@@ -1279,7 +1281,7 @@ function teacherScript() {
     var teacher=document.getElementById('sch-teacher').value;
     var days=['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه'];
     var zang=['زنگ اول','زنگ دوم','زنگ سوم','زنگ چهارم','زنگ پنجم'];
-    var html='<html><head><meta charset="utf-8"><style>@media print{@page{size:A4 portrait}}body{direction:rtl;font-family:tahoma,Arial;padding:15px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee;font-weight:bold}</style></head><body>';
+    var html='<html><head><meta charset="utf-8"><style>@font-face{font-family:"BNazanin";src:url(https://cdn.jsdelivr.net/gh/naderuser/bnazanin@main/BNazanin.ttf)}@media print{@page{size:A4 portrait}}body{direction:rtl;font-family:"BNazanin",tahoma,Arial;padding:15px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee;font-weight:bold}</style></head><body>';
     html=html+'<div style="text-align:center"><h2>'+school+'</h2><p>برنامه هفتگی - '+grade+'</p><p>کلاس: '+cls+' | آموزگار: '+teacher+'</p></div>';
     html=html+'<table><tr><th>روز / زنگ</th>';
     for(var z=0;z<5;z++){html=html+'<th>'+zang[z]+'</th>';}
@@ -1297,6 +1299,61 @@ function teacherScript() {
     w.document.write(html);
     w.document.close();
     w.print();
+  };
+  
+  document.getElementById('btn-word-schedule').onclick=function(){
+    var school=document.getElementById('sch-school').value;
+    var grade=document.getElementById('sch-grade').value;
+    var cls=document.getElementById('sch-class').value;
+    var teacher=document.getElementById('sch-teacher').value;
+    var days=['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه'];
+    var zang=['زنگ اول','زنگ دوم','زنگ سوم','زنگ چهارم','زنگ پنجم'];
+    var html='<html><head><meta charset="utf-8"><style>@font-face{font-family:"BNazanin";src:url(https://cdn.jsdelivr.net/gh/naderuser/bnazanin@main/BNazanin.ttf)}body{direction:rtl;font-family:"BNazanin",tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee;font-weight:bold}</style></head><body>';
+    html=html+'<div style="text-align:center"><h2>'+school+'</h2><p>برنامه هفتگی - '+grade+'</p><p>کلاس: '+cls+' | آموزگار: '+teacher+'</p></div>';
+    html=html+'<table><tr><th>روز / زنگ</th>';
+    for(var z=0;z<5;z++){html=html+'<th>'+zang[z]+'</th>';}
+    html=html+'</tr>';
+    for(var d=0;d<5;d++){
+      html=html+'<tr><td>'+days[d]+'</td>';
+      for(var i=1;i<=5;i++){
+        var el=document.getElementById('c'+d+i);
+        html=html+'<td>'+(el?el.value:'')+'</td>';
+      }
+      html=html+'</tr>';
+    }
+    html=html+'</table></body></html>';
+    var blob=new Blob([html],{type:'application/msword'});
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='برنامه-هفتگی.doc';
+    a.click();
+  };
+  
+  document.getElementById('btn-pdf-schedule').onclick=function(){
+    var school=document.getElementById('sch-school').value;
+    var grade=document.getElementById('sch-grade').value;
+    var cls=document.getElementById('sch-class').value;
+    var teacher=document.getElementById('sch-teacher').value;
+    var days=['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه'];
+    var zang=['زنگ اول','زنگ دوم','زنگ سوم','زنگ چهارم','زنگ پنجم'];
+    var html='<html><head><meta charset="utf-8"><style>@font-face{font-family:"BNazanin";src:url(https://cdn.jsdelivr.net/gh/naderuser/bnazanin@main/BNazanin.ttf)}body{direction:rtl;font-family:"BNazanin",tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee;font-weight:bold}</style></head><body>';
+    html=html+'<div style="text-align:center"><h2>'+school+'</h2><p>برنامه هفتگی - '+grade+'</p><p>کلاس: '+cls+' | آموزگار: '+teacher+'</p></div>';
+    html=html+'<table><tr><th>روز / زنگ</th>';
+    for(var z=0;z<5;z++){html=html+'<th>'+zang[z]+'</th>';}
+    html=html+'</tr>';
+    for(var d=0;d<5;d++){
+      html=html+'<tr><td>'+days[d]+'</td>';
+      for(var i=1;i<=5;i++){
+        var el=document.getElementById('c'+d+i);
+        html=html+'<td>'+(el?el.value:'')+'</td>';
+      }
+      html=html+'</tr>';
+    }
+    html=html+'</table></body></html>';
+    var w=window.open('','_blank');
+    w.document.write(html);
+    w.document.close();
+    setTimeout(function(){w.print();},500);
   };
 
   // ---- دانش‌آموزان ----
