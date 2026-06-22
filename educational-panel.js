@@ -1684,31 +1684,34 @@ function studentPortalPage() {
     }
     
     // Login
-    $('student-login-btn').addEventListener('click', async () => {
-      console.log('Login button clicked');
-      const studentId = $('student-id').value.trim();
-      const pass = $('student-pass').value.trim();
-      if (!studentId || !pass) {
-        $('student-login-error').textContent = 'لطفاً همه فیلدها را پر کنید';
-        return;
-      }
-      
-      console.log('Sending login request for:', studentId);
-      const res = await fetch('/api/student/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId, password: pass })
+    const loginBtn = document.getElementById('student-login-btn');
+    if (loginBtn) {
+      loginBtn.addEventListener('click', async () => {
+        alert('دکمه کلیک شد!');
+        const studentId = document.getElementById('student-id').value.trim();
+        const pass = document.getElementById('student-pass').value.trim();
+        if (!studentId || !pass) {
+          document.getElementById('student-login-error').textContent = 'لطفاً همه فیلدها را پر کنید';
+          return;
+        }
+        
+        const res = await fetch('/api/student/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ studentId, password: pass })
+        });
+        const data = await res.json();
+        
+        if (data.ok) {
+          CURRENT_STUDENT = data.student;
+          showDashboard();
+        } else {
+          document.getElementById('student-login-error').textContent = data.error || 'خطا در ورود';
+        }
       });
-      const data = await res.json();
-      console.log('Login response:', data);
-      
-      if (data.ok) {
-        CURRENT_STUDENT = data.student;
-        showDashboard();
-      } else {
-        $('student-login-error').textContent = data.error || 'خطا در ورود';
-      }
-    });
+    } else {
+      alert('دکمه ورود پیدا نشد!');
+    }
     
     // Logout
     $('student-logout-btn').addEventListener('click', async () => {
