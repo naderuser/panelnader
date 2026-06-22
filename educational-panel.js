@@ -532,11 +532,18 @@ function answerSheetWord(sub) {
 /* ------------------------- استایل مشترک صفحات ------------------------- */
 
 const SHARED_CSS = `
-  :root{--bg:#0f172a;--card:#ffffff;--primary:#1d4ed8;--primary-2:#2563eb;--accent:#0d9488;--muted:#64748b;--line:#e2e8f0;--danger:#dc2626;}
+  :root{--bg:#f1f5f9;--card:#ffffff;--primary:#1d4ed8;--primary-2:#2563eb;--accent:#0d9488;--muted:#64748b;--line:#e2e8f0;--danger:#dc2626;--text:#0f172a;}
+  [data-theme="light"]{--bg:#f1f5f9;--card:#ffffff;--primary:#1d4ed8;--primary-2:#2563eb;--muted:#64748b;--line:#e2e8f0;--text:#0f172a;}
+  [data-theme="dark"]{--bg:#0f172a;--card:#1e293b;--primary:#3b82f6;--primary-2:#60a5fa;--muted:#94a3b8;--line:#334155;--text:#f1f5f9;}
+  .theme-btn{padding:10px 20px;border:2px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);font-size:14px;cursor:pointer;transition:all .2s}
+  .theme-btn:hover{border-color:var(--primary);background:var(--primary);color:#fff}
+  .theme-btn.active{border-color:var(--primary);background:var(--primary);color:#fff}
   *{box-sizing:border-box}
-  body{margin:0;font-family:'Vazirmatn',Tahoma,system-ui,sans-serif;background:linear-gradient(180deg,#eef2ff,#f8fafc);color:#0f172a;direction:rtl;}
+  body{margin:0;font-family:'Vazirmatn',Tahoma,system-ui,sans-serif;background:var(--bg);color:var(--text);direction:rtl;transition:background .3s,color .3s;}
   .wrap{max-width:920px;margin:0 auto;padding:18px;}
   .header{background:linear-gradient(135deg,#1e3a8a,#2563eb);color:#fff;border-radius:18px;padding:22px;text-align:center;box-shadow:0 10px 30px rgba(37,99,235,.25);}
+  [data-theme="dark"] body{background:linear-gradient(180deg,#0f172a,#1e293b);}
+  [data-theme="light"] body{background:linear-gradient(180deg,#eef2ff,#f8fafc);}
   .header h1{margin:4px 0;font-size:22px}
   .header h2{margin:4px 0;font-size:15px;font-weight:500;opacity:.95}
   .header h3{margin:4px 0;font-size:13px;font-weight:400;opacity:.9}
@@ -1263,7 +1270,12 @@ function teacherPage() {
 
       <!-- تنظیمات -->
       <div class="card tab-content hidden" id="tab-settings">
-        <h3>تغییر رمز عبور</h3>
+        <h3>🌙 تم</h3>
+        <div style="display:flex;gap:12px;margin-bottom:20px">
+          <button class="theme-btn" data-theme="light" onclick="setTheme('light')">☀️ روشن</button>
+          <button class="theme-btn" data-theme="dark" onclick="setTheme('dark')">🌙 تاریک</button>
+        </div>
+        <h3>🔐 تغییر رمز عبور</h3>
         <label>رمز عبور جدید</label><input id="new-pass" type="password" autocomplete="new-password">
         <p class="muted" id="pass-msg"></p>
         <button class="btn" id="btn-change-pass">ذخیره رمز جدید</button>
@@ -1278,6 +1290,10 @@ function teacherPage() {
 function teacherScript() {
   return `
   const TYPES={descriptive:'تشریحی',multiple:'چهارگزینه‌ای',truefalse:'صحیح/غلط',short:'کوتاه‌پاسخ'};
+  const savedTheme=localStorage.getItem('panelTheme')||'light';
+  document.documentElement.setAttribute('data-theme',savedTheme);
+  setTimeout(()=>{document.querySelectorAll('.theme-btn').forEach(b=>b.classList.toggle('active',b.dataset.theme===savedTheme));},100);
+  window.setTheme=function(t){document.documentElement.setAttribute('data-theme',t);localStorage.setItem('panelTheme',t);document.querySelectorAll('.theme-btn').forEach(b=>b.classList.toggle('active',b.dataset.theme===t));};
   const MATH=['+','\u2212','\u00d7','\u00f7','=','\u2260','\u00b1','<','>','\u2264','\u2265','\u221a','\u221b','%','\u03c0','\u00b0','\u00bd','\u00bc','\u00be','\u2153','\u2154','\u215b','\u00b2','\u00b3','( )','[ ]','\u2211','\u220f','\u221e','\u2220','\u22a5','\u2225','\u2234','\u2235','\u2248','\u221d','\u222b','\u2192','\u2190'];
   const SHAPES=['\u25b3','\u25bd','\u25c1','\u25b7','\u25c0','\u25b6','\u25b2','\u25bc','\u25a1','\u25ad','\u25ac','\u25b1','\u25b0','\u25c7','\u25c6','\u2b20','\u2b1f','\u2b21','\u2b22','\u25cb','\u25ef','\u25cf','\u2b24','\u2b2d','\u2605','\u2606','\u23e2','\u22bf','\u25e2','\u25e3','\u25e4','\u25e5','\u2194','\u2191','\u2193','\u2220','\u22a5','\u2225','\u2312','\u2299','\u2014'];
   const SVG_SHAPES=[
