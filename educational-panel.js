@@ -959,7 +959,11 @@ function teacherPage() {
         <h3>📅 برنامه هفتگی</h3>
         <div class="row" style="margin-bottom:16px">
           <input id="sch-school" placeholder="نام مدرسه" style="flex:1">
-          <input id="sch-grade" placeholder="پایه" style="flex:1">
+          <input id="sch-year" placeholder="سال تحصیلی" style="flex:1">
+        </div>
+        <div class="row" style="margin-bottom:16px">
+          <input id="sch-topic" placeholder="موضوع" style="flex:1">
+          <input id="sch-principal" placeholder="نام مدیر" style="flex:1">
         </div>
         <div class="row" style="margin-bottom:16px">
           <input id="sch-class" placeholder="نام کلاس" style="flex:1">
@@ -979,21 +983,33 @@ function teacherPage() {
 
       <!-- جدول / اکسل -->
       <div class="card tab-content hidden" id="tab-tables">
-        <div class="section-header">
-          <div>
-            <h3>📊 جدول‌ساز حرفه‌ای</h3>
-            <p class="muted">جدول‌های زیبا و حرفه‌ای بسازید و با فرمت اکسل خروجی بگیرید</p>
-          </div>
+        <h3>📊 جدول‌ساز</h3>
+        <div class="row" style="margin-bottom:16px">
+          <input id="tbl-school" placeholder="نام مدرسه" style="flex:1">
+          <input id="tbl-year" placeholder="سال تحصیلی" style="flex:1">
         </div>
-        <div class="toolbar">
-          <button class="btn primary" id="btn-add-table">
-            <span>➕</span> افزودن جدول جدید
-          </button>
-          <button class="btn success" id="btn-dl-excel">
-            <span>📥</span> دانلود اکسل
-          </button>
+        <div class="row" style="margin-bottom:16px">
+          <input id="tbl-topic" placeholder="موضوع" style="flex:1">
+          <input id="tbl-principal" placeholder="نام مدیر" style="flex:1">
         </div>
-        <div id="tables-list"></div>
+        <div class="row" style="margin-bottom:16px">
+          <input id="tbl-class" placeholder="نام کلاس" style="flex:1">
+          <input id="tbl-teacher" placeholder="نام آموزگار" style="flex:1">
+        </div>
+        <div class="schedule-table-wrap">
+          <table class="schedule-table" id="custom-table">
+            <thead><tr><th>ردیف</th><th>زنگ اول</th><th>زنگ دوم</th><th>زنگ سوم</th><th>زنگ چهارم</th><th>زنگ پنجم</th></tr></thead>
+            <tbody id="custom-table-body"></tbody>
+          </table>
+        </div>
+        <div style="margin-bottom:16px">
+          <label style="margin-left:16px">تعداد سطرها:</label>
+          <input type="number" id="tbl-rows" value="5" min="1" max="30" style="width:60px;padding:6px;border:1px solid #ddd;border-radius:6px">
+        </div>
+        <button class="btn primary" id="btn-gen-table">🔄 ساخت جدول</button>
+        <button class="btn" id="btn-print-table">🖨️ چاپ</button>
+        <button class="btn sec" id="btn-word-table">📄 دانلود Word</button>
+        <button class="btn gray" id="btn-pdf-table">📕 دانلود PDF</button>
       </div>
 
       <!-- اسکنر عکس -->
@@ -1256,7 +1272,7 @@ function teacherScript() {
     document.querySelectorAll('.tab-content').forEach(c=>c.classList.add('hidden'));
     document.getElementById('tab-'+t.dataset.tab).classList.remove('hidden');
     if(t.dataset.tab==='answers')loadAnswers();
-    if(t.dataset.tab==='tables')renderTables();
+    
   });
 
   // ---- برنامه هفتگی ----
@@ -1274,27 +1290,34 @@ function teacherScript() {
     body.innerHTML=html;
   };
   
-  document.getElementById('btn-print-schedule').onclick=function(){
+  function getScheduleHtml(){
     var school=document.getElementById('sch-school').value;
-    var grade=document.getElementById('sch-grade').value;
+    var year=document.getElementById('sch-year').value;
+    var topic=document.getElementById('sch-topic').value;
+    var principal=document.getElementById('sch-principal').value;
     var cls=document.getElementById('sch-class').value;
     var teacher=document.getElementById('sch-teacher').value;
     var days=['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه'];
     var zang=['زنگ اول','زنگ دوم','زنگ سوم','زنگ چهارم','زنگ پنجم'];
-    var html='<html><head><meta charset="utf-8"><style>@font-face{font-family:"BNazanin";src:url(https://cdn.jsdelivr.net/gh/naderuser/bnazanin@main/BNazanin.ttf)}@media print{@page{size:A4 portrait}}body{direction:rtl;font-family:"BNazanin",tahoma,Arial;padding:15px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee;font-weight:bold}</style></head><body>';
-    html=html+'<div style="text-align:center"><h2>'+school+'</h2><p>برنامه هفتگی - '+grade+'</p><p>کلاس: '+cls+' | آموزگار: '+teacher+'</p></div>';
-    html=html+'<table><tr><th>روز / زنگ</th>';
-    for(var z=0;z<5;z++){html=html+'<th>'+zang[z]+'</th>';}
-    html=html+'</tr>';
+    var style='<style>@font-face{font-family:"BNazanin";src:url(https://cdn.jsdelivr.net/gh/naderuser/bnazanin@main/BNazanin.ttf)}body{direction:rtl;font-family:"BNazanin",tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee;font-weight:bold}</style>';
+    var header='<div style="text-align:center"><h2>'+school+'</h2><p><b>سال تحصیلی:</b> '+year+' | <b>موضوع:</b> '+topic+'</p><p><b>نام مدیر:</b> '+principal+' | <b>نام آموزگار:</b> '+teacher+'</p><p><b>کلاس:</b> '+cls+'</p></div>';
+    var table='<table><tr><th>روز / زنگ</th>';
+    for(var z=0;z<5;z++){table=table+'<th>'+zang[z]+'</th>';}
+    table=table+'</tr>';
     for(var d=0;d<5;d++){
-      html=html+'<tr><td>'+days[d]+'</td>';
+      table=table+'<tr><td>'+days[d]+'</td>';
       for(var i=1;i<=5;i++){
         var el=document.getElementById('c'+d+i);
-        html=html+'<td>'+(el?el.value:'')+'</td>';
+        table=table+'<td>'+(el?el.value:'')+'</td>';
       }
-      html=html+'</tr>';
+      table=table+'</tr>';
     }
-    html=html+'</table></body></html>';
+    table=table+'</table>';
+    return '<html><head><meta charset="utf-8">'+style+'</head><body>'+header+table+'</body></html>';
+  }
+  
+  document.getElementById('btn-print-schedule').onclick=function(){
+    var html='<html><head><meta charset="utf-8"><style>@font-face{font-family:"BNazanin";src:url(https://cdn.jsdelivr.net/gh/naderuser/bnazanin@main/BNazanin.ttf)}@media print{@page{size:A4 portrait}}body{direction:rtl;font-family:"BNazanin",tahoma,Arial;padding:15px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee;font-weight:bold}</style></head><body>'+getScheduleHtml().replace('<html><head><meta charset="utf-8"><style>@font-face{font-family:"BNazanin";src:url(https://cdn.jsdelivr.net/gh/naderuser/bnazanin@main/BNazanin.ttf)}body{direction:rtl;font-family:"BNazanin",tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee;font-weight:bold}</style></head><body>','')+'</body></html>';
     var w=window.open('','_blank');
     w.document.write(html);
     w.document.close();
@@ -1302,27 +1325,7 @@ function teacherScript() {
   };
   
   document.getElementById('btn-word-schedule').onclick=function(){
-    var school=document.getElementById('sch-school').value;
-    var grade=document.getElementById('sch-grade').value;
-    var cls=document.getElementById('sch-class').value;
-    var teacher=document.getElementById('sch-teacher').value;
-    var days=['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه'];
-    var zang=['زنگ اول','زنگ دوم','زنگ سوم','زنگ چهارم','زنگ پنجم'];
-    var html='<html><head><meta charset="utf-8"><style>@font-face{font-family:"BNazanin";src:url(https://cdn.jsdelivr.net/gh/naderuser/bnazanin@main/BNazanin.ttf)}body{direction:rtl;font-family:"BNazanin",tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee;font-weight:bold}</style></head><body>';
-    html=html+'<div style="text-align:center"><h2>'+school+'</h2><p>برنامه هفتگی - '+grade+'</p><p>کلاس: '+cls+' | آموزگار: '+teacher+'</p></div>';
-    html=html+'<table><tr><th>روز / زنگ</th>';
-    for(var z=0;z<5;z++){html=html+'<th>'+zang[z]+'</th>';}
-    html=html+'</tr>';
-    for(var d=0;d<5;d++){
-      html=html+'<tr><td>'+days[d]+'</td>';
-      for(var i=1;i<=5;i++){
-        var el=document.getElementById('c'+d+i);
-        html=html+'<td>'+(el?el.value:'')+'</td>';
-      }
-      html=html+'</tr>';
-    }
-    html=html+'</table></body></html>';
-    var blob=new Blob([html],{type:'application/msword'});
+    var blob=new Blob([getScheduleHtml()],{type:'application/msword'});
     var a=document.createElement('a');
     a.href=URL.createObjectURL(blob);
     a.download='برنامه-هفتگی.doc';
@@ -1330,30 +1333,82 @@ function teacherScript() {
   };
   
   document.getElementById('btn-pdf-schedule').onclick=function(){
-    var school=document.getElementById('sch-school').value;
-    var grade=document.getElementById('sch-grade').value;
-    var cls=document.getElementById('sch-class').value;
-    var teacher=document.getElementById('sch-teacher').value;
-    var days=['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه'];
-    var zang=['زنگ اول','زنگ دوم','زنگ سوم','زنگ چهارم','زنگ پنجم'];
-    var html='<html><head><meta charset="utf-8"><style>@font-face{font-family:"BNazanin";src:url(https://cdn.jsdelivr.net/gh/naderuser/bnazanin@main/BNazanin.ttf)}body{direction:rtl;font-family:"BNazanin",tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee;font-weight:bold}</style></head><body>';
-    html=html+'<div style="text-align:center"><h2>'+school+'</h2><p>برنامه هفتگی - '+grade+'</p><p>کلاس: '+cls+' | آموزگار: '+teacher+'</p></div>';
-    html=html+'<table><tr><th>روز / زنگ</th>';
-    for(var z=0;z<5;z++){html=html+'<th>'+zang[z]+'</th>';}
-    html=html+'</tr>';
-    for(var d=0;d<5;d++){
-      html=html+'<tr><td>'+days[d]+'</td>';
-      for(var i=1;i<=5;i++){
-        var el=document.getElementById('c'+d+i);
-        html=html+'<td>'+(el?el.value:'')+'</td>';
+    var w=window.open('','_blank');
+    w.document.write(getScheduleHtml());
+    w.document.close();
+    setTimeout(function(){w.print();},500);
+  };
+
+  // ---- جدول ساز ----
+  document.getElementById('btn-gen-table').onclick=function(){
+    var rows=parseInt(document.getElementById('tbl-rows').value)||5;
+    var body=document.getElementById('custom-table-body');
+    var html='';
+    for(var r=1;r<=rows;r++){
+      html=html+'<tr><td>'+r+'</td>';
+      for(var c=1;c<=5;c++){
+        html=html+'<td><textarea style="width:100%;min-height:40px;border:1px solid #ddd;padding:6px;border-radius:4px;font-family:inherit" id="t'+r+c+'"></textarea></td>';
       }
       html=html+'</tr>';
     }
-    html=html+'</table></body></html>';
+    body.innerHTML=html;
+  };
+  
+  document.getElementById('btn-print-table').onclick=function(){
+    var school=document.getElementById('tbl-school').value;
+    var year=document.getElementById('tbl-year').value;
+    var topic=document.getElementById('tbl-topic').value;
+    var principal=document.getElementById('tbl-principal').value;
+    var cls=document.getElementById('tbl-class').value;
+    var teacher=document.getElementById('tbl-teacher').value;
+    var rows=parseInt(document.getElementById('tbl-rows').value)||5;
+    var style='<style>@font-face{font-family:"BNazanin";src:url(https://cdn.jsdelivr.net/gh/naderuser/bnazanin@main/BNazanin.ttf)}@media print{@page{size:A4 portrait}}body{direction:rtl;font-family:"BNazanin",tahoma,Arial;padding:15px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee;font-weight:bold}</style>';
+    var header='<div style="text-align:center"><h2>'+school+'</h2><p><b>سال:</b> '+year+' | <b>موضوع:</b> '+topic+'</p><p><b>مدیر:</b> '+principal+' | <b>آموزگار:</b> '+teacher+' | <b>کلاس:</b> '+cls+'</p></div>';
+    var table='<table><tr><th>ردیف</th><th>زنگ اول</th><th>زنگ دوم</th><th>زنگ سوم</th><th>زنگ چهارم</th><th>زنگ پنجم</th></tr>';
+    for(var r=1;r<=rows;r++){
+      table=table+'<tr><td>'+r+'</td>';
+      for(var c=1;c<=5;c++){
+        var el=document.getElementById('t'+r+c);
+        table=table+'<td>'+(el?el.value:'')+'</td>';
+      }
+      table=table+'</tr>';
+    }
+    table=table+'</table>';
     var w=window.open('','_blank');
-    w.document.write(html);
+    w.document.write('<html><head><meta charset="utf-8">'+style+'</head><body>'+header+table+'</body></html>');
     w.document.close();
-    setTimeout(function(){w.print();},500);
+    w.print();
+  };
+  
+  document.getElementById('btn-word-table').onclick=function(){
+    var school=document.getElementById('tbl-school').value;
+    var year=document.getElementById('tbl-year').value;
+    var topic=document.getElementById('tbl-topic').value;
+    var principal=document.getElementById('tbl-principal').value;
+    var cls=document.getElementById('tbl-class').value;
+    var teacher=document.getElementById('tbl-teacher').value;
+    var rows=parseInt(document.getElementById('tbl-rows').value)||5;
+    var style='<style>@font-face{font-family:"BNazanin";src:url(https://cdn.jsdelivr.net/gh/naderuser/bnazanin@main/BNazanin.ttf)}body{direction:rtl;font-family:"BNazanin",tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee;font-weight:bold}</style>';
+    var header='<div style="text-align:center"><h2>'+school+'</h2><p><b>سال:</b> '+year+' | <b>موضوع:</b> '+topic+'</p><p><b>مدیر:</b> '+principal+' | <b>آموزگار:</b> '+teacher+' | <b>کلاس:</b> '+cls+'</p></div>';
+    var table='<table><tr><th>ردیف</th><th>زنگ اول</th><th>زنگ دوم</th><th>زنگ سوم</th><th>زنگ چهارم</th><th>زنگ پنجم</th></tr>';
+    for(var r=1;r<=rows;r++){
+      table=table+'<tr><td>'+r+'</td>';
+      for(var c=1;c<=5;c++){
+        var el=document.getElementById('t'+r+c);
+        table=table+'<td>'+(el?el.value:'')+'</td>';
+      }
+      table=table+'</tr>';
+    }
+    table=table+'</table>';
+    var blob=new Blob(['<html><head><meta charset="utf-8">'+style+'</head><body>'+header+table+'</body></html>'],{type:'application/msword'});
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='جدول.doc';
+    a.click();
+  };
+  
+  document.getElementById('btn-pdf-table').onclick=function(){
+    document.getElementById('btn-print-table').onclick();
   };
 
   // ---- دانش‌آموزان ----
@@ -1579,97 +1634,7 @@ function teacherScript() {
     else{msg.style.color='var(--danger)';msg.textContent=d.error||'خطا';}
   };
 
-  // ---- جدول‌ساز / خروجی اکسل ----
-  let TABLES=[];
-  function blankRows(rows,cols,old){
-    const data=[];
-    for(let r=0;r<rows;r++){const row=[];for(let c=0;c<cols;c++){row.push((old&&old[r]&&old[r][c]!=null)?old[r][c]:'');}data.push(row);}
-    return data;
-  }
-  window.renderTables=function(){
-    const box=document.getElementById('tables-list');
-    if(!TABLES.length){box.innerHTML='<div class="empty-state"><p>هنوز جدولی ساخته نشده است</p></div>';return;}
-    box.innerHTML=TABLES.map((t,ti)=>{
-      let h='<div class="q-block table-block"><div class="table-header"><span class="table-num">جدول '+(ti+1)+'</span><button class="btn sm danger" onclick="delTable('+ti+')">🗑️ حذف</button></div>';
-      h+='<input class="table-title-input" value="'+esc(t.title)+'" placeholder="موضوع جدول..." oninput="updTableTitle('+ti+',this.value)">';
-      h+='<div class="table-controls"><label>سطر:</label><input type="number" min="1" max="60" value="'+t.rows+'" onchange="resizeTable('+ti+',\\'rows\\',this.value)"><label>ستون:</label><input type="number" min="1" max="20" value="'+t.cols+'" onchange="resizeTable('+ti+',\\'cols\\',this.value)"></div>';
-      h+='<div style="overflow:auto"><table class="table-rtl">';
-      for(let r=0;r<t.rows;r++){h+='<tr>';for(let c=0;c<t.cols;c++){h+='<td contenteditable="true" oninput="updCell('+ti+','+r+','+c+',this.innerText)">'+esc(t.data[r][c]||'')+'</td>';}h+='</tr>';}
-      h+='</table></div></div>';
-      return h;
-    }).join('');
-  };
-  window.updTableTitle=(ti,v)=>{TABLES[ti].title=v;};
-  window.updCell=(ti,r,c,v)=>{TABLES[ti].data[r][c]=v;};
-  window.delTable=(ti)=>{if(!confirm('این جدول حذف شود؟'))return;TABLES.splice(ti,1);renderTables();};
-  window.resizeTable=(ti,k,v)=>{const n=Math.max(1,parseInt(v,10)||1);const t=TABLES[ti];if(k==='rows')t.rows=n;else t.cols=n;t.data=blankRows(t.rows,t.cols,t.data);renderTables();};
-  document.getElementById('btn-add-table').onclick=()=>{TABLES.push({title:'بانک سوالات',rows:4,cols:6,data:blankRows(4,6)});renderTables();};
-  
-  // رنگ‌بندی‌های جدول
-  const COLOR_THEMES=[
-    {name:'آبی',header:'4F46E5',band:'EEF2FF'},
-    {name:'سبز',header:'059669',band:'ECFDF5'},
-    {name:'نارنجی',header:'EA580C',band:'FFF7ED'},
-    {name:'صورتی',header:'DB2777',band:'FDF2F8'},
-    {name:'خاکستری',header:'334155',band:'F8FAFC'},
-  ];
-  let TABLE_THEME_IDX=0;
-  
-  document.getElementById('btn-dl-excel').onclick=()=>{
-    if(!TABLES.length){toast('ابتدا یک جدول بسازید');return;}
-    const theme=COLOR_THEMES[TABLE_THEME_IDX];
-    
-    // ساخت HTML با فرمت اکسل RTL
-    let html='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">';
-    html+='<head><meta charset="utf-8"><x:ExcelNameList><x:Name>Sheet1</x:Name></x:ExcelNameList>';
-    html+='<style>';
-    html+='table{direction:rtl}';
-    html+='.title{font-size:16pt;font-weight:bold;text-align:center;background:#4472C4;color:#fff;padding:10px}';
-    html+='.header{font-size:12pt;font-weight:bold;text-align:center;background:#D9E2F3;color:#000;padding:8px;border:1px solid #B4C6E7}';
-    html+='.cell{font-size:11pt;text-align:right;padding:6px;border:1px solid #B4C6E7}';
-    html+='.row-even{background:#F2F2F2}';
-    html+='</style></head><body>';
-
-    TABLES.forEach((t,ti)=>{
-      // عنوان
-      html+='<table ss:Direction="RightToLeft"><tr><td class="title" colspan="'+t.cols+'">'+(t.title||'جدول '+(ti+1))+'</td></tr></table>';
-      // هدر
-      html+='<table ss:Direction="RightToLeft">';
-      html+='<tr>';
-      for(let c=0;c<t.cols;c++){
-        html+='<td class="header">'+(c===0?'سوال':c===t.cols-1?'تایم':'گزینه '+(c))+'</td>';
-      }
-      html+='</tr>';
-      // داده‌ها
-      t.data.forEach((row,r)=>{
-        html+='<tr'+(r%2===1?' class="row-even"':'')+'>';
-        row.forEach((cell,c)=>{
-          html+='<td class="cell">'+esc(cell||'')+'</td>';
-        });
-        for(let c=row.length;c<t.cols;c++){
-          html+='<td class="cell"></td>';
-        }
-        html+='</tr>';
-      });
-      html+='</table><br>';
-    });
-
-    html+='</body></html>';
-    const blob=new Blob(['\ufeff'+html],{type:'application/vnd.ms-excel'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='جداول.xls';document.body.appendChild(a);a.click();a.remove();
-    toast('فایل اکسل با موفقیت ساخته شد ✅');
-  };
-  
-  // دکمه‌های رنگ‌بندی
-  const tableTools=document.querySelector('#tab-tables .table-actions');
-  if(tableTools){
-    tableTools.innerHTML+='<div style="margin-top:12px"><label style="font-size:13px">رنگ:</label>'+
-      COLOR_THEMES.map((t,i)=>'<button class="btn sm '+(i===0?'primary':'secondary')+'" style="margin:2px" onclick="setTableTheme('+i+')">'+t.name+'</button>').join('')+
-      '</div>';
-  }
-  window.setTableTheme=(i)=>{
-    TABLE_THEME_IDX=i;
-  };
+  // ---- جدول\u200cساز ----
 
   // ---- اسکنر عکس حرفه‌ای ----
   let SCANIMG=null, SCANORIG=null;
