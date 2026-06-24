@@ -193,6 +193,19 @@ async function handleApi(req, env, url, path) {
       const body = await req.json().catch(() => ({}));
       const meta = await getMeta(env);
       const questions = await getQuestions(env);
+      
+      // تصحیح خودکار سوالات چهارگزینه‌ای
+      let autoGradeResult = null;
+      const mcQuestions = questions.filter(q => q.type === 'multiple');
+      if (mcQuestions.length > 0) {
+        let correct = 0, total = 0;
+        mcQuestions.forEach(q => {
+          total++;
+          if (body.answers && body.answers[q.id] === q.correct) correct++;
+        });
+        autoGradeResult = { correct, total, percentage: Math.round((correct / total) * 100) };
+      }
+      
       const submission = {
         uuid: id,
         student: {
@@ -206,10 +219,11 @@ async function handleApi(req, env, url, path) {
         meta,
         questionsSnapshot: questions,
         submittedAt: Date.now(),
-        grading: null,
+        grading: autoGradeResult,
+        autoGraded: !!autoGradeResult,
       };
       await env.EXAM_KV.put("submission:" + id, JSON.stringify(submission));
-      return json({ ok: true });
+      return json({ ok: true, autoGraded: !!autoGradeResult, autoGradeResult });
     }
 
     if (method === "GET") {
@@ -839,6 +853,9 @@ const SHARED_CSS = `
   .format-btn{padding:8px 20px;border:2px solid #e2e8f0;border-radius:8px;background:#fff;cursor:pointer;font-weight:600;font-size:13px;transition:all .2s}
   .format-btn:hover{border-color:var(--primary-2)}
   .format-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .size-options{display:flex;flex-wrap:wrap;gap:12px}
+  .size-option{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px}
+  .size-option input[type=radio]{width:auto;cursor:pointer}
   .resize-preview{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:16px}
   .resize-item{position:relative;background:#f8fafc;border-radius:12px;padding:8px;border:1px solid #e2e8f0;text-align:center}
   .resize-item img{max-width:100%;max-height:120px;border-radius:8px}
@@ -868,12 +885,59 @@ const SHARED_CSS = `
   .ratio-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
   .crop-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
   
-  /* ---- برنامه هفتگی ---- */
-  .schedule-table-wrap{overflow-x:auto;border-radius:12px;border:2px solid #e2e8f0;background:#fff;margin-bottom:16px}
-  .schedule-table{width:100%;border-collapse:collapse}
-  .schedule-table th{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:12px 8px;font-weight:600;text-align:center}
-  .schedule-table td{border:1px solid #e2e8f0;padding:4px}
-  .schedule-table td:first-child{background:#f8fafc;font-weight:600;text-align:center}
+  /* ---- برنامه هفتگی کودکانه ---- */
+  .schedule-table-wrap{overflow-x:auto;border-radius:20px;border:4px solid #e2e8f0;background:#fff;margin-bottom:16px;box-shadow:0 8px 32px rgba(0,0,0,0.12)}
+  .schedule-table{width:100%;border-collapse:collapse;border-radius:20px;overflow:hidden}
+  .schedule-table th{color:#fff;padding:14px 10px;font-weight:700;text-align:center;font-size:15px;text-shadow:0 1px 2px rgba(0,0,0,0.2)}
+  .schedule-table th.sh-shanbe{background:linear-gradient(135deg,#ff9a9e,#fecfef)}
+  .schedule-table th.sh-yekshanbe{background:linear-gradient(135deg,#fddb92,#d1fdff)}
+  .schedule-table th.sh-doshshanbe{background:linear-gradient(135deg,#a1ffce,#faffbd)}
+  .schedule-table th.sh-seshshanbe{background:linear-gradient(135deg,#e0c3fc,#8ec5fc)}
+  .schedule-table th.sh-chaharshanbe{background:linear-gradient(135deg,#a8edea,#fed6e3)}
+  .schedule-table th.sh-panjshanbe{background:linear-gradient(135deg,#ffecd2,#fcb69f)}
+  .schedule-table th.sh-jome{background:linear-gradient(135deg,#c9d6ff,#e2e2e2);color:#555}
+  .schedule-table td{border:2px solid #fff;padding:12px 8px;text-align:center;transition:transform 0.2s}
+  .schedule-table td:hover{transform:scale(1.02)}
+  .schedule-table td:first-child{background:#fff;font-weight:700;text-align:center;font-size:14px;color:#333}
+  .schedule-table td.cell-shanbe{background:linear-gradient(135deg,#fff5f5,#ffe6e6)}
+  .schedule-table td.cell-yekshanbe{background:linear-gradient(135deg,#fffef0,#fffadc)}
+  .schedule-table td.cell-doshshanbe{background:linear-gradient(135deg,#f0fff4,#d5f5e3)}
+  .schedule-table td.cell-seshshanbe{background:linear-gradient(135deg,#f8f0ff,#ead5ff)}
+  .schedule-table td.cell-chaharshanbe{background:linear-gradient(135deg,#f0ffff,#d5f5f5)}
+  .schedule-table td.cell-panjshanbe{background:linear-gradient(135deg,#fff5f0,#ffe5d5)}
+  .schedule-table td.cell-jome{background:linear-gradient(135deg,#f5f5f5,#e8e8e8);color:#666}
+  .schedule-lesson{background:#fff;border-radius:10px;padding:8px 6px;margin:4px 0;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.08);border:1px solid rgba(0,0,0,0.05)}
+  .bell-icon{font-size:16px;margin-left:4px}
+  
+  /* ---- AI Chat ---- */
+  .ai-chat-container{background:linear-gradient(180deg,#f8fafc,#fff);border-radius:16px;border:1px solid #e2e8f0;overflow:hidden;display:flex;flex-direction:column;height:550px}
+  .ai-header{display:flex;align-items:center;gap:12px;padding:16px 20px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+  .ai-avatar{width:48px;height:48px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 4px 12px rgba(0,0,0,.2)}
+  .ai-title{flex:1}
+  .ai-title h3{margin:0;font-size:16px;font-weight:700}
+  .ai-status{font-size:12px;opacity:.8}
+  .ai-mode-select select{padding:8px 12px;border-radius:8px;border:none;background:#fff;color:#333;font-size:13px;font-weight:600;cursor:pointer}
+  .ai-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+  .ai-message{display:flex;gap:10px;max-width:85%}
+  .ai-message.user{flex-direction:row-reverse;align-self:flex-end}
+  .ai-message.ai{align-self:flex-start}
+  .ai-message-avatar{width:36px;height:36px;background:#e0e7ff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+  .ai-message.user .ai-message-avatar{background:#dbeafe;order:1}
+  .ai-message-content{background:#fff;border-radius:16px;padding:12px 16px;box-shadow:0 2px 8px rgba(0,0,0,.08);border:1px solid #e2e8f0}
+  .ai-message.user .ai-message-content{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border-color:transparent}
+  .ai-message-text{line-height:1.7;font-size:14px;white-space:pre-wrap}
+  .ai-typing-dots{display:flex;gap:4px;padding:4px 0}
+  .ai-typing-dots span{width:8px;height:8px;background:#667eea;border-radius:50%;animation:typingBounce 1.4s infinite ease-in-out}
+  .ai-typing-dots span:nth-child(1){animation-delay:-.32s}
+  .ai-typing-dots span:nth-child(2){animation-delay:-.16s}
+  @keyframes typingBounce{0%,80%,100%{transform:scale(.6);opacity:.4}40%{transform:scale(1);opacity:1}}
+  .ai-quick-actions{display:flex;gap:8px;padding:12px 16px;flex-wrap:wrap;border-top:1px solid #e2e8f0;background:#fafbfc}
+  .quick-action-btn{padding:8px 14px;background:#fff;border:2px solid #e2e8f0;border-radius:999px;font-size:13px;cursor:pointer;transition:all .2s;font-weight:500}
+  .quick-action-btn:hover{background:#667eea;color:#fff;border-color:#667eea}
+  .ai-input-area{display:flex;gap:10px;padding:16px;border-top:1px solid #e2e8f0;background:#fff;align-items:flex-end}
+  .ai-input-area textarea{flex:1;padding:12px 16px;border:2px solid #e2e8f0;border-radius:12px;resize:none;font-size:14px;line-height:1.5;max-height:120px;font-family:inherit}
+  .ai-input-area textarea:focus{border-color:#667eea;outline:none}
+  .ai-send-btn{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;padding:0}
 `;
 
 const FONT_LINK = `<link rel="preconnect" href="https://cdn.jsdelivr.net"><link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet">`;
@@ -984,6 +1048,28 @@ async function studentPage(env, id) {
     function renderResult(res){
       const done=document.getElementById('step-done');
       done.classList.remove('hidden');
+      
+      // تصحیح خودکار
+      if(res.grading && res.grading.correct !== undefined){
+        const g=res.grading;
+        const pct=g.percentage||Math.round((g.correct/g.total)*100);
+        const color=pct>=70?'#10b981':pct>=50?'#f59e0b':'#ef4444';
+        const rows=res.questions.filter(q=>q.type==='multiple').map((q,i)=>{
+          const ans=res.answers[q.id];
+          const isCorrect=String(ans)===String(q.correct);
+          return '<tr><td>'+(i+1)+'</td><td>'+esc(q.text||'')+'</td><td style="text-align:center">'+(ans?['الف','ب','ج','د'][parseInt(ans)]:'<i>بدون پاسخ</i>')+'</td><td style="text-align:center"><span style="color:'+(isCorrect?'#10b981':'#ef4444')+';font-weight:bold">'+(isCorrect?'✅':'❌')+'</span></td></tr>';
+        }).join('');
+        done.innerHTML='<h2>نتیجه آزمون ✅</h2>'+
+          '<div style="text-align:center;margin:20px 0">'+
+            '<div style="display:inline-block;background:linear-gradient(135deg,'+color+',#059669);color:#fff;border-radius:50%;width:120px;height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:28px;font-weight:bold">'+pct+'%</div>'+
+            '<p style="font-size:18px;margin-top:10px"><b>'+g.correct+'</b> از <b>'+g.total+'</b> پاسخ صحیح</p>'+
+          '</div>'+
+          '<h3>جزئیات سوالات چهارگزینه‌ای</h3>'+
+          '<table><tr><th>#</th><th>سوال</th><th>پاسخ شما</th><th>نتیجه</th></tr>'+rows+'</table>'+
+          '<p class="muted" style="margin-top:16px">⏳ پاسخ‌های تشریحی پس از تصحیح معلم نمایش داده می‌شود.</p>';
+        return;
+      }
+      
       if(!res.grading || !res.grading.graded){
         done.innerHTML='<h2>پاسخنامه شما ثبت شد ✅</h2><p class="muted">پاسخ‌های شما برای معلم ارسال شد. نتیجه پس از تصحیح معلم همین‌جا نمایش داده می‌شود.</p>';
         return;
@@ -1100,7 +1186,12 @@ async function studentPage(env, id) {
       const d=await r.json();
       if(d.ok){
         document.getElementById('step-exam').classList.add('hidden');
-        renderResult({grading:null});
+        // نمایش نتیجه تصحیح خودکار
+        if(d.autoGraded && d.autoGradeResult){
+          renderResult({grading: d.autoGradeResult});
+        }else{
+          renderResult({grading:null});
+        }
       }else{toast(d.error||'خطا در ثبت');btn.disabled=false;btn.textContent='ثبت نهایی پاسخنامه';}
     };
 
@@ -1178,6 +1269,7 @@ function teacherPage() {
 
         <div class="tab" data-tab="resize">🗜️ کاهش حجم</div>
         <div class="tab" data-tab="crop">✂️ برش عکس</div>
+        <div class="tab" data-tab="pdf2img">📄 PDF به عکس</div>
         <div class="tab" data-tab="ai">🤖 هوش مصنوعی</div>
         <div class="tab" data-tab="settings">⚙️ تنظیمات</div>
         <div style="flex:1"></div>
@@ -1283,7 +1375,7 @@ function teacherPage() {
         </div>
         <div class="schedule-table-wrap">
           <table class="schedule-table" id="schedule-table">
-            <thead><tr><th>روز / زنگ</th><th>زنگ اول</th><th>زنگ دوم</th><th>زنگ سوم</th><th>زنگ چهارم</th><th>زنگ پنجم</th></tr></thead>
+            <thead><tr><th>روز / زنگ ⭐</th><th class="sh-shanbe">🔔 زنگ اول</th><th class="sh-yekshanbe">🔔 زنگ دوم</th><th class="sh-doshshanbe">🔔 زنگ سوم</th><th class="sh-seshshanbe">🔔 زنگ چهارم</th><th class="sh-chaharshanbe">🔔 زنگ پنجم</th></tr></thead>
             <tbody id="schedule-body"></tbody>
           </table>
         </div>
@@ -1310,10 +1402,15 @@ function teacherPage() {
             <input type="text" id="tbl-title" placeholder="مثال: لیست نمرات" style="width:200px;padding:8px;border:1px solid #ddd;border-radius:6px">
           </div>
         </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer">
+          <input type="checkbox" id="tbl-avg-check">
+          <span>📈 محاسبه خودکار میانگین (ستون‌های عددی)</span>
+        </label>
         <div class="schedule-table-wrap">
           <table class="schedule-table" id="custom-table">
             <thead id="custom-table-head"></thead>
             <tbody id="custom-table-body"></tbody>
+            <tfoot id="custom-table-foot"></tfoot>
           </table>
         </div>
         <button class="btn primary" id="btn-gen-table">🔄 ساخت جدول</button>
@@ -1346,6 +1443,9 @@ function teacherPage() {
             <button class="filter-btn" data-filter="bw">سیاه/سفید</button>
             <button class="filter-btn" data-filter="document">سند</button>
             <button class="filter-btn" data-filter="enhance">بهبود</button>
+            <button class="filter-btn" data-filter="textoenhance">📝 تقویت متن</button>
+            <button class="filter-btn" data-filter="removeshadow">🌫️ حذف سایه</button>
+            <button class="filter-btn" data-filter="whitenbg">🧹 سفید کردن پس‌زمینه</button>
           </div>
           
           <!-- تنظیمات دستی -->
@@ -1379,6 +1479,12 @@ function teacherPage() {
           
           <!-- نوار ابزار -->
           <div class="scan-toolbar">
+            <button class="btn secondary" id="btn-rotate-l" title="چرخش 90 درجه چپ">
+              <span>↶</span> چرخش چپ
+            </button>
+            <button class="btn secondary" id="btn-rotate-r" title="چرخش 90 درجه راست">
+              <span>↷</span> چرخش راست
+            </button>
             <button class="btn primary" id="btn-dl-img">
               <span>💾</span> دانلود عکس
             </button>
@@ -1423,11 +1529,39 @@ function teacherPage() {
             </div>
             
             <div class="resize-group">
+              <label>📏 اندازه خروجی</label>
+              <div class="size-options">
+                <label class="size-option"><input type="radio" name="resize-size" value="original" checked> حفظ اندازه اصلی</label>
+                <label class="size-option"><input type="radio" name="resize-size" value="1920"> 1920px (بزرگ)</label>
+                <label class="size-option"><input type="radio" name="resize-size" value="1280"> 1280px (متوسط)</label>
+                <label class="size-option"><input type="radio" name="resize-size" value="800"> 800px (کوچک)</label>
+              </div>
+            </div>
+            
+            <div class="resize-group">
               <label>📐 فرمت خروجی</label>
               <div class="format-options">
                 <button class="format-btn active" data-format="jpeg">JPEG</button>
                 <button class="format-btn" data-format="png">PNG</button>
                 <button class="format-btn" data-format="webp">WEBP</button>
+              </div>
+            </div>
+            
+            <div class="resize-group" id="resize-total-info" style="background:#e0f2fe;border:2px solid #93c5fd">
+              <label>📦 اطلاعات کلی</label>
+              <div style="display:flex;justify-content:space-between;margin-top:8px">
+                <div>
+                  <span class="muted">حجم اصلی:</span>
+                  <strong id="total-original-size">-</strong>
+                </div>
+                <div>
+                  <span class="muted">حجم جدید:</span>
+                  <strong id="total-new-size" style="color:#10b981">-</strong>
+                </div>
+                <div>
+                  <span class="muted">کاهش:</span>
+                  <strong id="total-reduction" style="color:#059669">-</strong>
+                </div>
               </div>
             </div>
           </div>
@@ -1541,18 +1675,138 @@ function teacherPage() {
         </div>
       </div>
 
-      <!-- هوش مصنوعی -->
-      <div class="card tab-content hidden" id="tab-ai">
+      <!-- PDF به عکس -->
+      <div class="card tab-content hidden" id="tab-pdf2img">
         <div class="section-header">
           <div>
-            <h3>🤖 دستیار هوش مصنوعی</h3>
-            <p class="muted">سوالات خود را بپرسید</p>
+            <h3>📄 تبدیل PDF به عکس</h3>
+            <p class="muted">صفحات PDF را به تصاویر با کیفیت تبدیل کنید</p>
           </div>
         </div>
-        <div id="ai-messages" class="ai-messages" style="min-height:200px;max-height:400px;overflow-y:auto;padding:10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:10px"></div>
-        <div class="flex gap-2">
-          <input type="text" id="ai-input" placeholder="سوال خود را بنویسید..." style="flex:1">
-          <button class="btn primary" id="btn-ai-send">ارسال</button>
+        
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+        <script>pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+        <div class="upload-zone" id="pdf-drop-zone">
+          <input type="file" accept="application/pdf" id="pdf-file" class="hidden">
+          <div class="upload-icon">📄</div>
+          <p>فایل PDF را اینجا رها کنید یا کلیک کنید</p>
+          <span class="muted">فایل PDF برای تبدیل انتخاب کنید</span>
+        </div>
+        
+        <div id="pdf-controls" class="hidden">
+          <div class="pdf-info" style="margin-bottom:16px;padding:12px;background:#f0f9ff;border-radius:8px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <strong id="pdf-name">فایل PDF</strong>
+                <span class="muted" style="margin-right:12px">تعداد صفحات: <strong id="pdf-pages-count">0</strong></span>
+              </div>
+              <button class="btn sm danger" id="pdf-remove">🗑️ حذف</button>
+            </div>
+          </div>
+          
+          <div class="pdf-options" style="margin-bottom:16px">
+            <div class="pdf-option-group">
+              <label>انتخاب صفحات:</label>
+              <div class="pdf-page-select">
+                <button class="pdf-select-btn active" data-pages="all">همه صفحات</button>
+                <button class="pdf-select-btn" data-pages="odd">صفحات فرد</button>
+                <button class="pdf-select-btn" data-pages="even">صفحات زوج</button>
+                <button class="pdf-select-btn" data-pages="range">محدوده</button>
+              </div>
+              <input type="text" id="pdf-range" placeholder="مثال: 1,3,5-10" style="margin-top:8px" class="hidden">
+            </div>
+            
+            <div class="pdf-option-group" style="margin-top:12px">
+              <label>DPI (کیفیت تصویر):</label>
+              <div class="pdf-dpi-select">
+                <button class="pdf-dpi-btn" data-dpi="72">72 DPI<br><small>پیش‌نمایش</small></button>
+                <button class="pdf-dpi-btn active" data-dpi="150">150 DPI<br><small>متوسط</small></button>
+                <button class="pdf-dpi-btn" data-dpi="300">300 DPI<br><small>بالا</small></button>
+              </div>
+            </div>
+            
+            <div class="pdf-option-group" style="margin-top:12px">
+              <label>فرمت خروجی:</label>
+              <div class="pdf-format-select">
+                <button class="pdf-format-btn active" data-format="png">PNG</button>
+                <button class="pdf-format-btn" data-format="jpeg">JPEG</button>
+              </div>
+              <div id="jpeg-quality-group" class="hidden" style="margin-top:8px">
+                <label>کیفیت JPEG:</label>
+                <input type="range" id="jpeg-quality" min="50" max="100" value="85" style="width:150px">
+                <span id="jpeg-quality-val">85%</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="pdf-preview" id="pdf-preview" style="margin-bottom:16px"></div>
+          
+          <div class="pdf-toolbar">
+            <button class="btn primary" id="btn-pdf-render-all">
+              <span>⚡</span> رندر همه صفحات
+            </button>
+            <button class="btn secondary" id="btn-pdf-download-zip">
+              <span>📦</span> دانلود ZIP
+            </button>
+            <button class="btn gray" id="btn-pdf-clear-previews">
+              <span>🗑️</span> پاک کردن پیش‌نمایش‌ها
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- هوش مصنوعی -->
+      <div class="card tab-content hidden" id="tab-ai">
+        <div class="ai-chat-container">
+          <div class="ai-header">
+            <div class="ai-avatar">🤖</div>
+            <div class="ai-title">
+              <h3>دستیار هوش مصنوعی</h3>
+              <span class="ai-status">آنلاین</span>
+            </div>
+            <div class="ai-mode-select">
+              <select id="ai-mode">
+                <option value="answer">💬 پاسخ به سوالات</option>
+                <option value="write">📝 نوشتن سوال</option>
+                <option value="correct">✏️ تصحیح متن</option>
+                <option value="translate">🌐 ترجمه</option>
+              </select>
+            </div>
+          </div>
+          
+          <div id="ai-messages" class="ai-messages">
+            <div class="ai-message ai">
+              <div class="ai-message-avatar">🤖</div>
+              <div class="ai-message-content">
+                <div class="ai-message-text">سلام! 👋 من دستیار هوش مصنوعی شما هستم. چطور می‌توانم کمکتان کنم؟</div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="ai-typing hidden" id="ai-typing">
+            <div class="ai-message ai">
+              <div class="ai-message-avatar">🤖</div>
+              <div class="ai-message-content">
+                <div class="ai-typing-dots">
+                  <span></span><span></span><span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="ai-quick-actions">
+            <button class="quick-action-btn" data-prompt="یک سوال تستی از درس ریاضی پایه هشتم بساز">📚 ساخت سوال</button>
+            <button class="quick-action-btn" data-prompt="متن یک پیام تشویقی برای دانش‌آموزان بنویس">💬 پیام تشویقی</button>
+            <button class="quick-action-btn" data-prompt="یک برنامه تدریس هفتگی برای معلم پیشنهاد بده">📅 برنامه تدریس</button>
+            <button class="quick-action-btn" data-prompt="ایده‌هایی برای فعالیت‌های کلاسی خلاقانه">🎨 ایده خلاقانه</button>
+          </div>
+          
+          <div class="ai-input-area">
+            <textarea id="ai-input" placeholder="پیام خود را بنویسید..." rows="1"></textarea>
+            <button class="btn primary ai-send-btn" id="btn-ai-send">
+              <span>➤</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1638,10 +1892,11 @@ function teacherScript() {
     var body=document.getElementById('schedule-body');
     var html='';
     var days=['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه'];
+    var dayClasses=['cell-shanbe','cell-yekshanbe','cell-doshshanbe','cell-seshshanbe','cell-chaharshanbe'];
     for(var d=0;d<5;d++){
       html=html+'<tr><td>'+days[d]+'</td>';
       for(var i=1;i<=5;i++){
-        html=html+'<td><textarea style="width:100%;min-height:50px;border:1px solid #ddd;padding:6px;border-radius:4px;font-family:inherit" id="c'+d+i+'"></textarea></td>';
+        html=html+'<td class="'+dayClasses[d]+'"><textarea style="width:100%;min-height:50px;border:1px solid rgba(0,0,0,0.1);padding:6px;border-radius:8px;font-family:inherit;font-size:13px" id="c'+d+i+'" placeholder="زنگ '+(i)+'"></textarea></td>';
       }
       html=html+'</tr>';
     }
@@ -1649,44 +1904,66 @@ function teacherScript() {
   };
   
   function getScheduleHtml(){
-    var school=document.getElementById('sch-school').value;
-    var year=document.getElementById('sch-year').value;
-    var topic=document.getElementById('sch-topic').value;
-    var principal=document.getElementById('sch-principal').value;
-    var cls=document.getElementById('sch-class').value;
-    var teacher=document.getElementById('sch-teacher').value;
+    var school=document.getElementById('sch-school').value||'مدرسه';
+    var year=document.getElementById('sch-year').value||'';
+    var topic=document.getElementById('sch-topic').value||'';
+    var principal=document.getElementById('sch-principal').value||'';
+    var cls=document.getElementById('sch-class').value||'';
+    var teacher=document.getElementById('sch-teacher').value||'';
     var days=['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه'];
     var zang=['زنگ اول','زنگ دوم','زنگ سوم','زنگ چهارم','زنگ پنجم'];
-    var style='<style>@font-face{font-family:"BNazanin";src:url(https://cdn.jsdelivr.net/gh/naderuser/bnazanin@main/BNazanin.ttf)}body{direction:rtl;font-family:"BNazanin",tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee;font-weight:bold}</style>';
-    var header='<div style="text-align:center"><h2>'+school+'</h2><p><b>سال تحصیلی:</b> '+year+' | <b>موضوع:</b> '+topic+'</p><p><b>نام مدیر:</b> '+principal+' | <b>نام آموزگار:</b> '+teacher+'</p><p><b>کلاس:</b> '+cls+'</p></div>';
-    var table='<table><tr><th>روز / زنگ</th>';
-    for(var z=0;z<5;z++){table=table+'<th>'+zang[z]+'</th>';}
+    var dayColors=[
+      'linear-gradient(135deg,#ff9a9e,#fecfef)',
+      'linear-gradient(135deg,#fddb92,#d1fdff)',
+      'linear-gradient(135deg,#a1ffce,#faffbd)',
+      'linear-gradient(135deg,#e0c3fc,#8ec5fc)',
+      'linear-gradient(135deg,#a8edea,#fed6e3)'
+    ];
+    var cellColors=[
+      '#fff5f5','#fffef0','#f0fff4','#f8f0ff','#f0ffff'
+    ];
+    var style='<style>@font-face{font-family:"BNazanin";src:url(https://cdn.jsdelivr.net/gh/naderuser/bnazanin@main/BNazanin.ttf)}';
+    style+='body{direction:rtl;font-family:"BNazanin",tahoma,Arial;padding:30px;background:#f8fafc}';
+    style+='.header{text-align:center;padding:20px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border-radius:20px;margin-bottom:20px;box-shadow:0 4px 15px rgba(102,126,234,0.3)}';
+    style+='.header h1{font-size:24px;margin:0 0 10px}.header p{margin:5px 0;font-size:14px}';
+    style+='table{width:100%;border-collapse:separate;border-spacing:0;border-radius:15px;overflow:hidden;box-shadow:0 4px 15px rgba(0,0,0,0.1)}';
+    style+='th{border:none;padding:12px 8px;font-size:14px;color:#fff;text-align:center}';
+    style+='td{border:none;padding:15px 8px;text-align:center;font-size:13px;min-height:50px}';
+    style+='.footer{text-align:center;margin-top:30px;padding:20px;border-top:2px dashed #ddd}';
+    style+='.footer p{margin:10px 0}</style>';
+    
+    var header='<div class="header"><h1>⭐ برنامه هفتگی کلاس ⭐</h1><p>🏫 '+school+' | سال تحصیلی: '+year+'</p><p>کلاس: '+cls+' | آموزگار: '+teacher+'</p></div>';
+    
+    var table='<table>';
+    table+='<tr><th style="background:#555">روز / زنگ</th>';
+    for(var z=0;z<5;z++){table=table+'<th style="background:'+dayColors[z]+';color:#333">🔔 '+zang[z]+'</th>';}
     table=table+'</tr>';
     for(var d=0;d<5;d++){
-      table=table+'<tr><td>'+days[d]+'</td>';
+      table=table+'<tr><td style="background:#eee;font-weight:bold;color:#333">'+days[d]+'</td>';
       for(var i=1;i<=5;i++){
         var el=document.getElementById('c'+d+i);
-        table=table+'<td>'+(el?el.value:'')+'</td>';
+        var val=(el?el.value:'')||'&nbsp;';
+        table=table+'<td style="background:'+cellColors[d]+';color:#333"><div style="min-height:40px">'+val+'</div></td>';
       }
       table=table+'</tr>';
     }
     table=table+'</table>';
-    return '<html><head><meta charset="utf-8">'+style+'</head><body>'+header+table+'</body></html>';
+    var footer='<div class="footer"><p>امضای مدیر: ___________________</p><p>تاریخ: ___________________</p></div>';
+    return '<html><head><meta charset="utf-8">'+style+'</head><body>'+header+table+footer+'</body></html>';
   }
   
   document.getElementById('btn-print-schedule').onclick=function(){
-    var html='<html><head><meta charset="utf-8"><style>@font-face{font-family:"BNazanin";src:url(https://cdn.jsdelivr.net/gh/naderuser/bnazanin@main/BNazanin.ttf)}@media print{@page{size:A4 portrait}}body{direction:rtl;font-family:"BNazanin",tahoma,Arial;padding:15px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee;font-weight:bold}</style></head><body>'+getScheduleHtml().replace('<html><head><meta charset="utf-8"><style>@font-face{font-family:"BNazanin";src:url(https://cdn.jsdelivr.net/gh/naderuser/bnazanin@main/BNazanin.ttf)}body{direction:rtl;font-family:"BNazanin",tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:10px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee;font-weight:bold}</style></head><body>','')+'</body></html>';
     var w=window.open('','_blank');
-    w.document.write(html);
+    w.document.write(getScheduleHtml());
     w.document.close();
-    w.print();
+    setTimeout(function(){w.print();},500);
   };
   
   document.getElementById('btn-word-schedule').onclick=function(){
     var blob=new Blob([getScheduleHtml()],{type:'application/msword'});
     var a=document.createElement('a');
     a.href=URL.createObjectURL(blob);
-    a.download='برنامه-هفتگی.doc';
+    a.download='برنامه-هفتگی-زیبا.doc';
     a.click();
   };
   
@@ -1703,6 +1980,7 @@ function teacherScript() {
     var cols=parseInt(document.getElementById('tbl-cols').value)||4;
     var thead=document.getElementById('custom-table-head');
     var tbody=document.getElementById('custom-table-body');
+    var tfoot=document.getElementById('custom-table-foot');
     var h='<tr><th>ردیف</th>';
     for(var c=1;c<=cols;c++){h=h+'<th>ستون '+c+'</th>';}
     h=h+'</tr>';
@@ -1716,13 +1994,59 @@ function teacherScript() {
       b=b+'</tr>';
     }
     tbody.innerHTML=b;
+    // ردیف میانگین
+    tfoot.innerHTML='';
+    var showAvg=document.getElementById('tbl-avg-check').checked;
+    if(showAvg) calcAndShowAvg();
+  };
+  
+  // محاسبه و نمایش میانگین
+  function calcAndShowAvg(){
+    var rows=parseInt(document.getElementById('tbl-rows').value)||5;
+    var cols=parseInt(document.getElementById('tbl-cols').value)||4;
+    var tfoot=document.getElementById('custom-table-foot');
+    var avgCells=[];
+    for(var c=1;c<=cols;c++){
+      var vals=[];
+      for(var r=1;r<=rows;r++){
+        var el=document.getElementById('t'+r+'_'+c);
+        var v=parseFloat(el?el.value.trim():'');
+        if(!isNaN(v)) vals.push(v);
+      }
+      if(vals.length>0){
+        var avg=vals.reduce(function(a,b){return a+b;},0)/vals.length;
+        avgCells.push(avg.toFixed(2));
+      }else{
+        avgCells.push('-');
+      }
+    }
+    var f='<tr style="background:#e0f2fe;font-weight:bold">';
+    f=f+'<td>📈 میانگین</td>';
+    for(var c=1;c<=cols;c++){
+      f=f+'<td>'+avgCells[c-1]+'</td>';
+    }
+    f=f+'</tr>';
+    tfoot.innerHTML=f;
+  }
+  
+  // وقتی checkbox تغییر می‌کند
+  document.getElementById('tbl-avg-check').onchange=function(){
+    var rows=parseInt(document.getElementById('tbl-rows').value)||5;
+    if(rows<=0) return;
+    if(this.checked){
+      calcAndShowAvg();
+    }else{
+      document.getElementById('custom-table-foot').innerHTML='';
+    }
   };
   
   document.getElementById('btn-word-table').onclick=function(){
     var title=document.getElementById('tbl-title').value||'جدول';
     var rows=parseInt(document.getElementById('tbl-rows').value)||5;
     var cols=parseInt(document.getElementById('tbl-cols').value)||4;
+    var showAvg=document.getElementById('tbl-avg-check').checked;
     var style='<style>body{direction:rtl;font-family:tahoma,Arial;padding:20px}table{width:100%;border-collapse:collapse;margin-top:15px}th,td{border:1px solid #333;padding:8px;text-align:center}th{background:#667eea;color:#fff}td:first-child{background:#eee}</style>';
+    var avgStyle='<style>.avg-row{background:#e0f2fe;font-weight:bold}</style>';
     var h='<h2 style="text-align:center">'+title+'</h2><table><tr><th>ردیف</th>';
     for(var c=1;c<=cols;c++){h=h+'<th>ستون '+c+'</th>';}
     h=h+'</tr>';
@@ -1734,8 +2058,24 @@ function teacherScript() {
       }
       h=h+'</tr>';
     }
+    // ردیف میانگین
+    if(showAvg){
+      var avgCells=[];
+      for(var c=1;c<=cols;c++){
+        var vals=[];
+        for(var r=1;r<=rows;r++){
+          var el=document.getElementById('t'+r+'_'+c);
+          var v=parseFloat(el?el.value.trim():'');
+          if(!isNaN(v)) vals.push(v);
+        }
+        avgCells.push(vals.length>0?(vals.reduce(function(a,b){return a+b;},0)/vals.length).toFixed(2):'-');
+      }
+      h=h+'<tr style="background:#e0f2fe;font-weight:bold"><td>📈 میانگین</td>';
+      for(var c=1;c<=cols;c++){h=h+'<td>'+avgCells[c-1]+'</td>';}
+      h=h+'</tr>';
+    }
     h=h+'</table>';
-    var blob=new Blob(['<html><head><meta charset="utf-8">'+style+'</head><body>'+h+'</body></html>'],{type:'application/msword'});
+    var blob=new Blob(['<html><head><meta charset="utf-8">'+avgStyle+style+'</head><body>'+h+'</body></html>'],{type:'application/msword'});
     var a=document.createElement('a');
     a.href=URL.createObjectURL(blob);
     a.download=title+'.doc';
@@ -1746,7 +2086,9 @@ function teacherScript() {
     var title=document.getElementById('tbl-title').value||'جدول';
     var rows=parseInt(document.getElementById('tbl-rows').value)||5;
     var cols=parseInt(document.getElementById('tbl-cols').value)||4;
-    var html='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>body{direction:rtl;text-align:center}table{margin:0 auto;direction:rtl}th,td{border:1px solid #333;padding:6px}th{background:#667eea;color:#fff;text-align:center}</style></head><body>';
+    var showAvg=document.getElementById('tbl-avg-check').checked;
+    var avgStyle='.avg-row{background:#e0f2fe;font-weight:bold}';
+    var html='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>body{direction:rtl;text-align:center}table{margin:0 auto;direction:rtl}th,td{border:1px solid #333;padding:6px}th{background:#667eea;color:#fff;text-align:center}'+avgStyle+'</style></head><body>';
     html=html+'<h2>'+title+'</h2><table><tr><th>ردیف</th>';
     for(var c=1;c<=cols;c++){html=html+'<th>ستون '+c+'</th>';}
     html=html+'</tr>';
@@ -1756,6 +2098,22 @@ function teacherScript() {
         var el=document.getElementById('t'+r+'_'+c);
         html=html+'<td>'+(el?el.value:'')+'</td>';
       }
+      html=html+'</tr>';
+    }
+    // ردیف میانگین
+    if(showAvg){
+      var avgCells=[];
+      for(var c=1;c<=cols;c++){
+        var vals=[];
+        for(var r=1;r<=rows;r++){
+          var el=document.getElementById('t'+r+'_'+c);
+          var v=parseFloat(el?el.value.trim():'');
+          if(!isNaN(v)) vals.push(v);
+        }
+        avgCells.push(vals.length>0?(vals.reduce(function(a,b){return a+b;},0)/vals.length).toFixed(2):'-');
+      }
+      html=html+'<tr style="background:#e0f2fe;font-weight:bold"><td>📈 میانگین</td>';
+      for(var c=1;c<=cols;c++){html=html+'<td>'+avgCells[c-1]+'</td>';}
       html=html+'</tr>';
     }
     html=html+'</table></body></html>';
@@ -2157,26 +2515,83 @@ function teacherScript() {
   document.getElementById('btn-refresh-ans').onclick=loadAnswers;
 
   // ---- تغییر رمز عبور ----
-  // AI Chat
-  var aiMessages = [];
+  
+  // ---- AI Chat ----
+  var aiMessages = [{role:'system',content:'تو یک دستیار هوشمند برای معلمان هستی. به زبان فارسی پاسخ بده.'}];
+  
+  // Quick actions
+  document.querySelectorAll('.quick-action-btn').forEach(btn=>{
+    btn.onclick=()=>{
+      const prompt=btn.dataset.prompt;
+      document.getElementById('ai-input').value=prompt;
+      document.getElementById('btn-ai-send').click();
+    };
+  });
+  
+  // Auto-resize textarea
+  const aiInput=document.getElementById('ai-input');
+  aiInput.addEventListener('input',function(){
+    this.style.height='auto';
+    this.style.height=Math.min(this.scrollHeight,120)+'px';
+  });
+  
+  function addAiMessage(role,text){
+    const box=document.getElementById('ai-messages');
+    const isUser=role==='user';
+    const html='<div class="ai-message '+(isUser?'user':'ai')+'">'+
+      '<div class="ai-message-avatar">'+(isUser?'👤':'🤖')+'</div>'+
+      '<div class="ai-message-content">'+
+        '<div class="ai-message-text">'+esc(text)+'</div>'+
+      '</div>'+
+    '</div>';
+    box.insertAdjacentHTML('beforeend',html);
+    box.scrollTop=box.scrollHeight;
+  }
+  
+  function showTyping(){
+    document.getElementById('ai-typing').classList.remove('hidden');
+    document.getElementById('ai-messages').scrollTop=document.getElementById('ai-messages').scrollHeight;
+  }
+  
+  function hideTyping(){
+    document.getElementById('ai-typing').classList.add('hidden');
+  }
+  
   document.getElementById('btn-ai-send').onclick=async()=>{
-    const input = document.getElementById('ai-input');
-    const text = input.value.trim();
-    if (!text) return;
-    aiMessages.push({role:'user', content:text});
-    input.value = '';
-    document.getElementById('ai-messages').innerHTML += '<div style="text-align:left;margin:5px 0"><b>شما:</b> '+esc(text)+'</div><div style="text-align:left;color:#666">...</div>';
-    const box = document.getElementById('ai-messages');
-    try {
-      const res = await fetch('/api/ai/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:aiMessages})});
-      const d = await res.json();
-      if (d.error) { alert(d.error); return; }
-      aiMessages.push({role:'assistant', content:d.content});
-      box.innerHTML = aiMessages.map(m=>'<div style="text-align:'+(m.role==='user'?'left':'right')+';margin:5px 0"><b>'+(m.role==='user'?'شما':'🤖')+':</b> '+esc(m.content)+'</div>').join('');
-    } catch(e){ alert('خطا: '+e.message); }
-    box.scrollTop = box.scrollHeight;
+    const text=aiInput.value.trim();
+    if(!text) return;
+    aiInput.value='';
+    aiInput.style.height='auto';
+    
+    // افزودن پیام کاربر
+    addAiMessage('user',text);
+    aiMessages.push({role:'user',content:text});
+    
+    // نمایش typing
+    showTyping();
+    
+    const box=document.getElementById('ai-messages');
+    try{
+      const mode=document.getElementById('ai-mode').value;
+      let systemPrompt='تو یک دستیار هوشمند برای معلمان هستی. به زبان فارسی پاسخ بده.';
+      if(mode==='write') systemPrompt='تو یک معلم باتجربه هستی. سوالات تستی و تشریحی باکیفیت بساز.';
+      if(mode==='correct') systemPrompt='تو یک معلم باتجربه هستی. متون را تصحیح کن و پیشنهاد بده.';
+      if(mode==='translate') systemPrompt='تو یک مترجم حرفه‌ای هستی. ترجمه‌ها را طبیعی و روان انجام بده.';
+      
+      const msgs=[{role:'system',content:systemPrompt},...aiMessages.slice(-10)];
+      const res=await fetch('/api/ai/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs})});
+      const d=await res.json();
+      hideTyping();
+      if(d.error){addAiMessage('ai','❌ خطا: '+d.error);return;}
+      addAiMessage('ai',d.content);
+      aiMessages.push({role:'assistant',content:d.content});
+    }catch(e){
+      hideTyping();
+      addAiMessage('ai','❌ خطا در اتصال: '+e.message);
+    }
   };
-  document.getElementById('ai-input').onkeydown=e=>{ if(e.key==='Enter') document.getElementById('btn-ai-send').click(); };
+  
+  aiInput.onkeydown=e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();document.getElementById('btn-ai-send').click();} };
 
   document.getElementById('btn-change-pass').onclick=async()=>{
     const np=document.getElementById('new-pass').value;
@@ -2259,7 +2674,10 @@ function teacherScript() {
     gray:()=>{document.getElementById('scan-bright').value=10;document.getElementById('scan-contrast').value=20;document.getElementById('scan-saturation').value=-100;document.getElementById('scan-sharp').value=30;},
     bw:()=>{document.getElementById('scan-bright').value=30;document.getElementById('scan-contrast').value=50;document.getElementById('scan-saturation').value=-100;document.getElementById('scan-sharp').value=40;},
     document:()=>{document.getElementById('scan-bright').value=20;document.getElementById('scan-contrast').value=40;document.getElementById('scan-saturation').value=-80;document.getElementById('scan-sharp').value=50;},
-    enhance:()=>{document.getElementById('scan-bright').value=10;document.getElementById('scan-contrast').value=30;document.getElementById('scan-saturation').value=10;document.getElementById('scan-sharp').value=40;}
+    enhance:()=>{document.getElementById('scan-bright').value=10;document.getElementById('scan-contrast').value=30;document.getElementById('scan-saturation').value=10;document.getElementById('scan-sharp').value=40;},
+    textoenhance:()=>{document.getElementById('scan-bright').value=15;document.getElementById('scan-contrast').value=50;document.getElementById('scan-saturation').value=-100;document.getElementById('scan-sharp').value=60;},
+    removeshadow:()=>{document.getElementById('scan-bright').value=25;document.getElementById('scan-contrast').value=35;document.getElementById('scan-saturation').value=-50;document.getElementById('scan-sharp').value=30;},
+    whitenbg:()=>{document.getElementById('scan-bright').value=30;document.getElementById('scan-contrast').value=45;document.getElementById('scan-saturation').value=-100;document.getElementById('scan-sharp').value=40;}
   };
   
   document.querySelectorAll('.filter-btn').forEach(btn=>{
@@ -2344,6 +2762,45 @@ function teacherScript() {
     }
   }
   
+  // چرخش عکس
+  let scanRotation=0;
+  function applyRotation(){
+    if(!SCANORIG)return;
+    scanRotation=(scanRotation%4+4)%4;
+    const cv=document.getElementById('scan-canvas');
+    const ctx=cv.getContext('2d');
+    const img=SCANORIG;
+    let w=img.width, h=img.height;
+    const mw=1400;
+    if(w>mw){h=Math.round(h*mw/w);w=mw;}
+    
+    if(scanRotation===1||scanRotation===3){
+      cv.width=h;cv.height=w;
+    }else{
+      cv.width=w;cv.height=h;
+    }
+    
+    ctx.save();
+    if(scanRotation===1)ctx.translate(cv.width,0);
+    if(scanRotation===2)ctx.translate(cv.width,cv.height);
+    if(scanRotation===3)ctx.translate(0,cv.height);
+    ctx.rotate(scanRotation*Math.PI/2);
+    ctx.drawImage(img,0,0,w,h);
+    ctx.restore();
+  }
+  
+  document.getElementById('btn-rotate-l').onclick=()=>{
+    if(!SCANORIG){toast('ابتدا عکس را انتخاب کنید');return;}
+    scanRotation--;
+    applyRotation();
+  };
+  
+  document.getElementById('btn-rotate-r').onclick=()=>{
+    if(!SCANORIG){toast('ابتدا عکس را انتخاب کنید');return;}
+    scanRotation++;
+    applyRotation();
+  };
+  
   document.getElementById('btn-reset-scan').onclick=()=>{
     SCANORIG=SCANIMG;
     document.getElementById('scan-bright').value=0;
@@ -2425,13 +2882,35 @@ function teacherScript() {
   
   function renderResizePreview(){
     const box=document.getElementById('resize-preview');
-    if(!RESIZE_IMAGES.length){box.innerHTML='';return;}
+    if(!RESIZE_IMAGES.length){box.innerHTML='';updateTotalInfo();return;}
     box.innerHTML=RESIZE_IMAGES.map((r,i)=>{
       const origSize=(r.file.size/1024).toFixed(1);
-      return '<div class="resize-item"><button class="remove-btn" onclick="removeResizeImg('+i+')">×</button><img src="'+r.original+'" alt=""><div class="size-info">'+origSize+' KB</div></div>';
+      return '<div class="resize-item"><button class="remove-btn" onclick="removeResizeImg('+i+')">×</button><img src="'+r.original+'" alt=""><div class="size-info">'+origSize+' KB<br>'+r.img.width+'×'+r.img.height+'</div></div>';
     }).join('');
+    updateTotalInfo();
   }
   window.removeResizeImg=(i)=>{RESIZE_IMAGES.splice(i,1);renderResizePreview();if(!RESIZE_IMAGES.length)document.getElementById('resize-controls').classList.add('hidden');};
+  
+  // Update total info
+  function updateTotalInfo(){
+    const el=document.getElementById('total-original-size');
+    const nel=document.getElementById('total-new-size');
+    const rel=document.getElementById('total-reduction');
+    if(!el||!nel||!rel)return;
+    if(!RESIZE_IMAGES.length){
+      el.textContent='-';nel.textContent='-';rel.textContent='-';
+      return;
+    }
+    const totalOrig=RESIZE_IMAGES.reduce((s,r)=>s+r.file.size,0);
+    el.textContent=(totalOrig/1024/1024).toFixed(2)+' MB';
+    // Estimate new size based on quality
+    const q=parseInt(document.getElementById('resize-quality').value,10)/100;
+    const fmt=document.querySelector('.format-btn.active')?.dataset.format||'jpeg';
+    let estNew=totalOrig*q*0.7; // Rough estimate
+    nel.textContent=(estNew/1024/1024).toFixed(2)+' MB';
+    const reduction=Math.round((1-estNew/totalOrig)*100);
+    rel.textContent=reduction+'٪ کاهش';
+  }
   
   // Quality estimate
   document.getElementById('resize-quality').addEventListener('input',function(){
@@ -2440,31 +2919,45 @@ function teacherScript() {
     const avgSize=RESIZE_IMAGES.length?RESIZE_IMAGES.reduce((s,r)=>s+r.file.size,0)/RESIZE_IMAGES.length:500000;
     const est=Math.round(avgSize*(q/100));
     document.getElementById('quality-estimate').textContent='حدود '+(est/1024).toFixed(0)+' KB';
+    updateTotalInfo();
   });
   
   // Format selection
   document.querySelectorAll('.format-btn').forEach(btn=>{
-    btn.onclick=()=>{document.querySelectorAll('.format-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');};
+    btn.onclick=()=>{document.querySelectorAll('.format-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');updateTotalInfo();};
+  });
+  
+  // Size selection
+  document.querySelectorAll('input[name="resize-size"]').forEach(radio=>{
+    radio.addEventListener('change',updateTotalInfo);
   });
   
   document.getElementById('btn-resize-all').onclick=()=>{
     if(!RESIZE_IMAGES.length){toast('ابتدا عکس انتخاب کنید');return;}
     const q=parseInt(document.getElementById('resize-quality').value,10)/100;
     const fmt=document.querySelector('.format-btn.active').dataset.format;
+    const sizeOpt=document.querySelector('input[name="resize-size"]:checked').value;
     const mime=fmt==='png'?'image/png':fmt==='webp'?'image/webp':'image/jpeg';
     const ext=fmt==='png'?'png':fmt==='webp'?'webp':'jpg';
     
     RESIZE_IMAGES.forEach((r,i)=>{
-      // حفظ اندازه اصلی عکس
+      let w=r.img.width, h=r.img.height;
+      if(sizeOpt!=='original'){
+        const maxSize=parseInt(sizeOpt);
+        if(w>maxSize||h>maxSize){
+          const ratio=Math.min(maxSize/w,maxSize/h);
+          w=Math.round(w*ratio);
+          h=Math.round(h*ratio);
+        }
+      }
       const cv=document.createElement('canvas');
-      cv.width=r.img.width;
-      cv.height=r.img.height;
+      cv.width=w;cv.height=h;
       const ctx=cv.getContext('2d');
-      ctx.drawImage(r.img,0,0);
+      ctx.drawImage(r.img,0,0,w,h);
       cv.toBlob(blob=>{
         const a=document.createElement('a');
         a.href=URL.createObjectURL(blob);
-        a.download='عکس_'+(i+1)+'_فشرده.'+ext;
+        a.download='عکس_'+(i+1)+'_'+w+'x'+h+'.'+ext;
         document.body.appendChild(a);a.click();a.remove();
       },mime,q);
     });
@@ -2632,6 +3125,178 @@ function teacherScript() {
   });
 
   document.addEventListener('mouseup',()=>{cropState.dragging=false;cropState.resizing=false;});
+
+  // ---- PDF به عکس ----
+  let pdfDoc=null;
+  let pdfFileName='';
+  let pdfRenderedPages=[];
+  
+  // Drag & Drop for PDF
+  const pdfDropZone=document.getElementById('pdf-drop-zone');
+  const pdfFileInput=document.getElementById('pdf-file');
+  pdfDropZone.onclick=()=>pdfFileInput.click();
+  pdfDropZone.addEventListener('dragover',e=>{e.preventDefault();pdfDropZone.style.borderColor='#667eea';});
+  pdfDropZone.addEventListener('dragleave',()=>{pdfDropZone.style.borderColor='#ccc';});
+  pdfDropZone.addEventListener('drop',e=>{e.preventDefault();pdfDropZone.style.borderColor='#ccc';if(e.dataTransfer.files[0])loadPdfFile(e.dataTransfer.files[0]);});
+  pdfFileInput.addEventListener('change',e=>{if(e.target.files[0])loadPdfFile(e.target.files[0]);});
+  
+  async function loadPdfFile(file){
+    if(file.type!=='application/pdf'){toast('فقط فایل PDF مجاز است');return;}
+    pdfFileName=file.name;
+    const arrayBuffer=await file.arrayBuffer();
+    pdfDoc=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+    document.getElementById('pdf-name').textContent=file.name;
+    document.getElementById('pdf-pages-count').textContent=pdfDoc.numPages;
+    document.getElementById('pdf-controls').classList.remove('hidden');
+    document.getElementById('pdf-preview').innerHTML='';
+    pdfRenderedPages=[];
+    // پیش‌نمایش صفحه اول
+    renderPdfPage(1);
+  }
+  
+  async function renderPdfPage(pageNum){
+    if(!pdfDoc)return;
+    const page=await pdfDoc.getPage(pageNum);
+    const dpi=parseInt(document.querySelector('.pdf-dpi-btn.active')?.dataset.dpi)||150;
+    const scale=dpi/72;
+    const viewport=page.getViewport({scale});
+    const canvas=document.createElement('canvas');
+    canvas.width=viewport.width;
+    canvas.height=viewport.height;
+    const ctx=canvas.getContext('2d');
+    await page.render({canvasContext:ctx,viewport}).promise;
+    const format=document.querySelector('.pdf-format-btn.active')?.dataset.format||'png';
+    const dataUrl=canvas.toDataURL('image/'+format,format==='jpeg'?parseInt(document.getElementById('jpeg-quality')?.value||85)/100:undefined);
+    const previewDiv=document.getElementById('pdf-preview');
+    const pageDiv=document.createElement('div');
+    pageDiv.className='pdf-page-preview';
+    pageDiv.style.cssText='display:inline-block;margin:8px;text-align:center;background:#fff;border:1px solid #ddd;border-radius:8px;padding:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1)';
+    pageDiv.innerHTML='<div style="font-weight:bold;margin-bottom:8px">صفحه '+pageNum+'</div><img src="'+dataUrl+'" style="max-width:200px;max-height:280px;border:1px solid #eee"><div style="margin-top:8px"><button class="btn sm primary" onclick="downloadPdfPage('+pageNum+')">📥 دانلود</button></div>';
+    previewDiv.appendChild(pageDiv);
+    pdfRenderedPages.push({pageNum,canvas,dataUrl});
+    return canvas;
+  }
+  
+  window.downloadPdfPage=function(pageNum){
+    const rp=pdfRenderedPages.find(p=>p.pageNum===pageNum);
+    if(!rp){toast('صفحه رندر نشده');return;}
+    const format=document.querySelector('.pdf-format-btn.active')?.dataset.format||'png';
+    const ext=format==='jpeg'?'jpg':format;
+    const a=document.createElement('a');
+    a.href=rp.dataUrl;
+    a.download=pdfFileName.replace('.pdf','_page_'+pageNum+'.'+ext);
+    a.click();
+    toast('صفحه '+pageNum+' دانلود شد ✅');
+  };
+  
+  document.getElementById('pdf-remove').onclick=()=>{
+    pdfDoc=null;
+    pdfFileName='';
+    pdfRenderedPages=[];
+    document.getElementById('pdf-controls').classList.add('hidden');
+    document.getElementById('pdf-preview').innerHTML='';
+  };
+  
+  // انتخاب نوع صفحات
+  document.querySelectorAll('.pdf-select-btn').forEach(btn=>{
+    btn.onclick=()=>{
+      document.querySelectorAll('.pdf-select-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      const type=btn.dataset.pages;
+      document.getElementById('pdf-range').classList.toggle('hidden',type!=='range');
+    };
+  });
+  
+  // DPI
+  document.querySelectorAll('.pdf-dpi-btn').forEach(btn=>{
+    btn.onclick=()=>{
+      document.querySelectorAll('.pdf-dpi-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+    };
+  });
+  
+  // فرمت
+  document.querySelectorAll('.pdf-format-btn').forEach(btn=>{
+    btn.onclick=()=>{
+      document.querySelectorAll('.pdf-format-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      const format=btn.dataset.format;
+      document.getElementById('jpeg-quality-group').classList.toggle('hidden',format!=='jpeg');
+    };
+  });
+  
+  // کیفیت JPEG
+  document.getElementById('jpeg-quality').oninput=function(){
+    document.getElementById('jpeg-quality-val').textContent=this.value+'%';
+  };
+  
+  // رندر همه صفحات
+  document.getElementById('btn-pdf-render-all').onclick=async()=>{
+    if(!pdfDoc){toast('فایل PDF انتخاب نشده');return;}
+    document.getElementById('pdf-preview').innerHTML='';
+    pdfRenderedPages=[];
+    const selectType=document.querySelector('.pdf-select-btn.active')?.dataset.pages||'all';
+    let pagesToRender=[];
+    if(selectType==='all'){
+      for(let i=1;i<=pdfDoc.numPages;i++)pagesToRender.push(i);
+    }else if(selectType==='odd'){
+      for(let i=1;i<=pdfDoc.numPages;i+=2)pagesToRender.push(i);
+    }else if(selectType==='even'){
+      for(let i=2;i<=pdfDoc.numPages;i+=2)pagesToRender.push(i);
+    }else if(selectType==='range'){
+      const rangeStr=document.getElementById('pdf-range').value;
+      const parts=rangeStr.split(',');
+      parts.forEach(p=>{
+        if(p.includes('-')){
+          const [s,e]=p.split('-').map(x=>parseInt(x.trim()));
+          for(let i=s;i<=e;i++)if(i>=1&&i<=pdfDoc.numPages)pagesToRender.push(i);
+        }else{
+          const n=parseInt(p.trim());
+          if(n>=1&&n<=pdfDoc.numPages)pagesToRender.push(n);
+        }
+      });
+    }
+    pagesToRender=[...new Set(pagesToRender)].sort((a,b)=>a-b);
+    toast('در حال رندر '+pagesToRender.length+' صفحه...');
+    for(const pn of pagesToRender){
+      await renderPdfPage(pn);
+    }
+    toast('رندر تمام صفحات انجام شد ✅');
+  };
+  
+  // پاک کردن پیش‌نمایش‌ها
+  document.getElementById('btn-pdf-clear-previews').onclick=()=>{
+    document.getElementById('pdf-preview').innerHTML='';
+    pdfRenderedPages=[];
+  };
+  
+  // دانلود ZIP
+  document.getElementById('btn-pdf-download-zip').onclick=async()=>{
+    if(pdfRenderedPages.length===0){toast('ابتدا صفحات را رندر کنید');return;}
+    toast('در حال ساخت ZIP...');
+    const format=document.querySelector('.pdf-format-btn.active')?.dataset.format||'png';
+    const ext=format==='jpeg'?'jpg':format;
+    const mimeType='image/'+format;
+    // ساخت blob ها
+    const blobs=pdfRenderedPages.map(rp=>{
+      const dataUrl=rp.canvas.toDataURL(mimeType,format==='jpeg'?parseInt(document.getElementById('jpeg-quality')?.value||85)/100:undefined);
+      const binary=atob(dataUrl.split(',')[1]);
+      const array=new Uint8Array(binary.length);
+      for(let i=0;i<binary.length;i++)array[i]=binary.charCodeAt(i);
+      return {name:pdfFileName.replace('.pdf','_page_'+rp.pageNum+'.'+ext),data:array};
+    });
+    // Simple ZIP without library - just download individual files if ZIP not available
+    // For simplicity, download each file separately
+    blobs.forEach((b,i)=>{
+      setTimeout(()=>{
+        const a=document.createElement('a');
+        a.href=URL.createObjectURL(new Blob([b.data],{type:mimeType}));
+        a.download=b.name;
+        a.click();
+      },i*300);
+    });
+    toast('دانلود '+blobs.length+' فایل شروع شد ✅');
+  };
 
   checkAuth();
   `;
