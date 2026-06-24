@@ -27,6 +27,9 @@ const QUESTION_TYPES = {
   multiple: "چهارگزینه‌ای",
   truefalse: "صحیح / غلط",
   short: "کوتاه‌پاسخ",
+  matching: "جورکردنی",
+  fillblank: "جاخالی",
+  sorting: "مرتب‌سازی",
 };
 
 /* ------------------------- ابزارهای کمکی ------------------------- */
@@ -296,6 +299,7 @@ async function handleApi(req, env, url, path) {
           options: Array.isArray(q.options) ? q.options.map((o) => String(o)) : [],
           correct: q.correct == null ? "" : q.correct,
           image: typeof q.image === "string" ? q.image : "",
+          images: Array.isArray(q.images) ? q.images.filter(Boolean) : [],
           order: i,
         };
       });
@@ -305,6 +309,53 @@ async function handleApi(req, env, url, path) {
         await env.EXAM_KV.put("meta", JSON.stringify(meta));
       }
       return json({ ok: true });
+    }
+
+    // بانک سوالات
+    if (path === "/api/teacher/bank" && method === "GET") {
+      const raw = await env.EXAM_KV.get("question_bank");
+      return json({ ok: true, bank: raw ? JSON.parse(raw) : [] });
+    }
+
+    if (path === "/api/teacher/bank" && method === "PUT") {
+      const body = await req.json().catch(() => ({}));
+      const bank = Array.isArray(body.bank) ? body.bank : [];
+      await env.EXAM_KV.put("question_bank", JSON.stringify(bank));
+      return json({ ok: true });
+    }
+
+    // تصحیح خودکار
+    if (path === "/api/teacher/auto-grade" && method === "POST") {
+      const body = await req.json().catch(() => ({}));
+      const { submissionId } = body;
+      if (!submissionId) return json({ ok: false, error: "شناسه پاسخنامه نیاز است" }, 400);
+      
+      const raw = await env.EXAM_KV.get("submission:" + submissionId);
+      if (!raw) return json({ ok: false, error: "پاسخنامه یافت نشد" }, 404);
+      
+      const sub = JSON.parse(raw);
+      const questions = sub.questionsSnapshot || [];
+      const answers = sub.answers || {};
+      
+      const grading = {};
+      let correctCount = 0;
+      let totalCount = 0;
+      
+      questions.forEach((q, i) => {
+        const ans = answers[String(q.id || i)] || answers[i];
+        const result = autoGrade(q, ans);
+        if (result === "correct") correctCount++;
+        if (result !== null) totalCount++;
+        grading[String(q.id || i)] = result;
+      });
+      
+      sub.grading = grading;
+      sub.autoGraded = true;
+      sub.autoGradedAt = Date.now();
+      sub.score = { correct: correctCount, total: totalCount };
+      
+      await env.EXAM_KV.put("submission:" + submissionId, JSON.stringify(sub));
+      return json({ ok: true, grading, score: sub.score });
     }
 
     // پاسخنامه‌ها
@@ -456,6 +507,20 @@ function questionBodyWord(q) {
     inner += `<div class="opt">صحیح ☐&nbsp;&nbsp;&nbsp; غلط ☐</div>`;
   } else if (q.type === "short") {
     inner += `<div class="ans">پاسخ: ...........................................................</div>`;
+  } else if (q.type === "matching") {
+    const left = (q.options || []).filter((_, i) => i % 2 === 0);
+    const right = (q.options || []).filter((_, i) => i % 2 === 1);
+    inner += `<div style="display:flex;gap:40px;margin-top:10px">`;
+    inner += `<div>${left.map((o, oi) => `<div style="margin:5px 0">${oi + 1}) ${esc(o)} <span>_______</span></div>`).join('')}</div>`;
+    inner += `<div>${right.map((o, oi) => `<div style="margin:5px 0">${["الف", "ب", "ج", "د", "ه", "و"][oi] || oi + 1}) ${esc(o)}</div>`).join('')}</div>`;
+    inner += `</div>`;
+  } else if (q.type === "fillblank") {
+    inner += `<div class="ans">پاسخ: ...........................................................</div>`;
+  } else if (q.type === "sorting") {
+    (q.options || []).forEach((o, oi) => {
+      inner += `<div class="opt">${oi + 1}) ${esc(o)}</div>`;
+    });
+    inner += `<div class="ans" style="margin-top:10px">ترتیب صحیح: ۱, ۲, ۳, ...</div>`;
   } else {
     inner += `<div class="ans">پاسخ:<br><br><br></div>`;
   }
@@ -493,7 +558,80 @@ function answerLabel(q, ans) {
     if (ans === "false" || ans === false) return "غلط";
     return esc(ans);
   }
+  if (q.type === "matching") {
+    if (Array.isArray(ans)) {
+      return ans.map((a, i) => `${i + 1}→${a}`).join(', ');
+    }
+    return esc(ans);
+  }
+  if (q.type === "fillblank") {
+    if (Array.isArray(ans)) {
+      return ans.join(' | ');
+    }
+    return esc(ans);
+  }
+  if (q.type === "sorting") {
+    if (Array.isArray(ans)) {
+      return ans.join(' → ');
+    }
+    return esc(ans);
+  }
   return esc(ans);
+}
+
+// تصحیح خودکار سوال
+function autoGrade(q, ans) {
+  if (q.type === "multiple" || q.type === "truefalse" || q.type === "short") {
+    const correct = String(q.correct || "").toLowerCase().trim();
+    const given = String(ans || "").toLowerCase().trim();
+    return correct === given ? "correct" : "wrong";
+  }
+  if (q.type === "matching") {
+    const correct = q.correct || {};
+    if (Array.isArray(ans)) {
+      let correctCount = 0;
+      for (const key in correct) {
+        if (String(ans[parseInt(key)] || "") === String(correct[key])) {
+          correctCount++;
+        }
+      }
+      const total = Object.keys(correct).length;
+      if (correctCount === total) return "correct";
+      if (correctCount > total / 2) return "partial";
+      return "wrong";
+    }
+    return "wrong";
+  }
+  if (q.type === "fillblank") {
+    const correct = (q.correct || "").split("|").map(s => String(s).toLowerCase().trim());
+    if (Array.isArray(ans)) {
+      let correctCount = 0;
+      ans.forEach((a, i) => {
+        if (correct[i] && String(a || "").toLowerCase().trim() === correct[i]) {
+          correctCount++;
+        }
+      });
+      if (correctCount === correct.length) return "correct";
+      if (correctCount > correct.length / 2) return "partial";
+      return "wrong";
+    }
+    return "wrong";
+  }
+  if (q.type === "sorting") {
+    const correct = (q.correct || "").split(",").map(s => String(s).toLowerCase().trim());
+    if (Array.isArray(ans)) {
+      const given = ans.map(s => String(s || "").toLowerCase().trim());
+      let correctCount = 0;
+      for (let i = 0; i < correct.length; i++) {
+        if (given[i] === correct[i]) correctCount++;
+      }
+      if (correctCount === correct.length) return "correct";
+      if (correctCount > correct.length / 2) return "partial";
+      return "wrong";
+    }
+    return "wrong";
+  }
+  return null;
 }
 
 const MARK_LABEL = { correct: "صحیح", wrong: "غلط", partial: "نیمه‌درست" };
@@ -566,6 +704,38 @@ const SHARED_CSS = `
   .badge{background:#e0e7ff;color:#3730a3;border-radius:999px;padding:2px 10px;font-size:12px}
   .opt-row{display:flex;gap:8px;align-items:center;margin-top:6px}
   .opt-row input[type=text]{flex:1}
+  .match-row{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
+  .match-row input[type=text]{flex:1;min-width:120px}
+  .match-row span{color:#667eea;font-size:18px;font-weight:bold}
+  .sort-row{display:flex;gap:8px;align-items:center;margin-top:6px}
+  .sort-row span{min-width:24px;color:#667eea;font-weight:bold}
+  .sort-row input[type=text]{flex:1}
+  .q-with-img{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+  .q-with-img .q-text{flex:1;min-width:200px}
+  .q-with-img .q-img{max-width:300px}
+  .q-with-img .q-img img{max-width:100%;border-radius:8px}
+  .imgprev{max-width:200px;border-radius:8px;border:1px solid var(--line);margin:8px 0}
+  .q-img-inline{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .q-img-inline img{max-width:150px;border-radius:6px;border:1px solid var(--line)}
+  .multi-img-preview{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+  .multi-img-item{display:flex;flex-direction:column;gap:4px;align-items:center}
+  .multi-img-item img{max-width:120px;border-radius:6px;border:1px solid var(--line)}
+  .modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
+  .modal.hidden{display:none}
+  .modal-content{background:#fff;border-radius:16px;max-width:600px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.3)}
+  .modal-header{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line);flex-shrink:0}
+  .modal-header h3{margin:0;font-size:18px}
+  .modal-body{padding:20px;overflow-y:auto;flex:1}
+  .bank-actions{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+  .bank-actions input{flex:1;min-width:150px}
+  .bank-item{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;cursor:pointer;transition:all 0.2s}
+  .bank-item:hover{background:#f0f4ff;border-color:#667eea}
+  .bank-item.selected{background:#e0e7ff;border-color:#667eea}
+  .bank-item .q-type{font-size:12px;color:var(--muted);margin-bottom:4px}
+  .bank-item .q-text{font-size:14px}
+  .bank-actions-bar{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .preview-exam{border:2px dashed #667eea;border-radius:16px;padding:20px;margin-top:16px}
+  .preview-exam .q-preview{border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px;background:#fafbff}
   .toolbar{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
   .toolbar button{background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:4px 9px;cursor:pointer;font-size:15px;min-width:32px}
   .toolbar button:hover{background:#c7d2fe}
@@ -789,7 +959,7 @@ async function studentPage(env, id) {
 
     function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
     function esc(s){const d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;}
-    function typeLabel(t){return {descriptive:'تشریحی',multiple:'چهارگزینه‌ای',truefalse:'صحیح/غلط',short:'کوتاه‌پاسخ'}[t]||t;}
+    function typeLabel(t){return {descriptive:'تشریحی',multiple:'چهارگزینه‌ای',truefalse:'صحیح/غلط',short:'کوتاه‌پاسخ',matching:'جورکردنی',fillblank:'جاخالی',sorting:'مرتب‌سازی'}[t]||t;}
     function qHtml(q){
       if(!q.image)return q.rich?(q.text||''):esc(q.text);
       return '<div class="q-with-img"><div class="q-text">'+(q.rich?q.text||'':esc(q.text))+'</div><div class="q-img"><img src="'+q.image+'" class="imgprev"></div></div>';
@@ -845,6 +1015,29 @@ async function studentPage(env, id) {
           body=(q.options||[]).map((o,oi)=>'<div class="opt-row"><label style="font-weight:400;margin:0"><input type="radio" name="q_'+q.id+'" value="'+oi+'" style="width:auto;margin-left:6px"> '+['الف','ب','ج','د'][oi]+') '+esc(o)+'</label></div>').join('');
         }else if(q.type==='truefalse'){
           body='<div class="opt-row"><label style="font-weight:400;margin:0"><input type="radio" name="q_'+q.id+'" value="true" style="width:auto;margin-left:6px"> صحیح</label>&nbsp;&nbsp;<label style="font-weight:400;margin:0"><input type="radio" name="q_'+q.id+'" value="false" style="width:auto;margin-left:6px"> غلط</label></div>';
+        }else if(q.type==='matching'){
+          const left=(q.options||[]).filter((_,j)=>j%2===0);
+          const right=(q.options||[]).filter((_,j)=>j%2===1);
+          const shuffled=[...right].sort(()=>Math.random()-0.5);
+          body='<div style="display:flex;gap:40px;flex-wrap:wrap;margin-top:10px">';
+          body+='<div style="flex:1;min-width:150px">'+left.map((o,oi)=>'<div style="margin:6px 0"><b>'+(oi+1)+')</b> '+esc(o)+' <input type="text" data-match="'+q.id+'_'+oi+'" placeholder="..." style="width:60px;border:1px solid #ddd;border-radius:6px;padding:4px"></div>').join('')+'</div>';
+          body+='<div style="flex:1;min-width:150px"><p class="muted" style="margin-bottom:8px">گزینه‌ها:</p>'+shuffled.map((o,oi)=>'<div style="margin:6px 0"><span class="match-drag" draggable="true" data-item="'+oi+'" style="background:#e0e7ff;padding:4px 10px;border-radius:6px;cursor:move;display:inline-block">'+esc(o)+'</span></div>').join('')+'</div>';
+          body+='</div>';
+        }else if(q.type==='fillblank'){
+          const parts=(q.text||'').split('_______');
+          body='<div style="margin-top:8px;display:flex;flex-wrap:wrap;align-items:center;gap:8px">';
+          parts.forEach((part,pi)=>{
+            body+='<span>'+esc(part)+'</span>';
+            if(pi<parts.length-1){
+              body+='<input type="text" data-fill="'+q.id+'_'+pi+'" style="border:1px solid #667eea;border-radius:6px;padding:6px 10px;min-width:100px">';
+            }
+          });
+          body+='</div>';
+        }else if(q.type==='sorting'){
+          const items=(q.options||[]).map((o,oi)=>({text:o,id:oi}));
+          const shuffled=[...items].sort(()=>Math.random()-0.5);
+          body='<div class="sortable-list" data-sort="'+q.id+'" style="margin-top:10px;min-height:40px">'+shuffled.map(item=>'<div class="sort-item" draggable="true" data-id="'+item.id+'" style="background:#f3f4ff;padding:8px 14px;border-radius:8px;margin:4px 0;cursor:move;display:flex;align-items:center;gap:8px"><span style="cursor:grab">☰</span> '+esc(item.text)+'</div>').join('')+'</div>';
+          body+='<button class="btn sm gray" onclick="resetSort(\''+q.id+'\')" style="margin-top:8px">🔄 بازآرایی</button>';
         }else if(q.type==='short'){
           body='<input type="text" data-q="'+q.id+'" autocomplete="off">';
         }else{
@@ -852,6 +1045,7 @@ async function studentPage(env, id) {
         }
         return '<div class="q-block"><div class="qhead"><b>'+(i+1)+'. '+qHtml(q)+'</b><span class="badge">'+typeLabel(q.type)+'</span></div>'+body+'</div>';
       }).join('');
+      initSortable();
     }
 
     document.getElementById('btn-enter').onclick=()=>{
@@ -877,6 +1071,25 @@ async function studentPage(env, id) {
         if(q.type==='multiple'||q.type==='truefalse'){
           const sel=document.querySelector('input[name="q_'+q.id+'"]:checked');
           answers[q.id]=sel?sel.value:'';
+        }else if(q.type==='matching'){
+          const matchAns={};
+          document.querySelectorAll('[data-match^="'+q.id+'_"]').forEach(inp=>{
+            const idx=inp.dataset.match.split('_')[1];
+            matchAns[idx]=inp.value;
+          });
+          answers[q.id]=matchAns;
+        }else if(q.type==='fillblank'){
+          const fillAns=[];
+          document.querySelectorAll('[data-fill^="'+q.id+'_"]').forEach(inp=>{
+            fillAns.push(inp.value);
+          });
+          answers[q.id]=fillAns;
+        }else if(q.type==='sorting'){
+          const sortAns=[];
+          document.querySelectorAll('.sortable-list[data-sort="'+q.id+'"] .sort-item').forEach(item=>{
+            sortAns.push(item.dataset.id);
+          });
+          answers[q.id]=sortAns;
         }else{
           const el=document.querySelector('[data-q="'+q.id+'"]');
           answers[q.id]=el?el.value:'';
@@ -889,6 +1102,41 @@ async function studentPage(env, id) {
         document.getElementById('step-exam').classList.add('hidden');
         renderResult({grading:null});
       }else{toast(d.error||'خطا در ثبت');btn.disabled=false;btn.textContent='ثبت نهایی پاسخنامه';}
+    };
+
+    function initSortable(){
+      document.querySelectorAll('.sortable-list').forEach(list=>{
+        list.querySelectorAll('.sort-item').forEach(item=>{
+          item.addEventListener('dragstart',e=>{e.dataTransfer.setData('text',item.dataset.id);item.style.opacity='0.5';});
+          item.addEventListener('dragend',e=>{item.style.opacity='1';});
+        });
+        list.addEventListener('dragover',e=>{e.preventDefault();});
+        list.addEventListener('drop',e=>{
+          e.preventDefault();
+          const id=e.dataTransfer.getData('text');
+          const dragged=list.querySelector('[data-id="'+id+'"]');
+          if(!dragged)return;
+          const children=[...list.querySelectorAll('.sort-item')];
+          let closest=null,offset=Infinity;
+          children.forEach(child=>{
+            if(child===dragged)return;
+            const rect=child.getBoundingClientRect();
+            const offsetY=e.clientY-rect.top-rect.height/2;
+            if(offsetY<0&&offsetY>-offset){offset=-offsetY;closest=child;}
+          });
+          if(closest)list.insertBefore(dragged,closest);
+          else list.appendChild(dragged);
+        });
+      });
+    }
+    window.resetSort=function(qid){
+      const q=DATA.questions.find(q=>q.id===qid);
+      if(!q)return;
+      const items=(q.options||[]).map((o,oi)=>({text:o,id:oi}));
+      const shuffled=[...items].sort(()=>Math.random()-0.5);
+      const list=document.querySelector('.sortable-list[data-sort="'+qid+'"]');
+      if(list)list.innerHTML=shuffled.map(item=>'<div class="sort-item" draggable="true" data-id="'+item.id+'" style="background:#f3f4ff;padding:8px 14px;border-radius:8px;margin:4px 0;cursor:move;display:flex;align-items:center;gap:8px"><span style="cursor:grab">☰</span> '+esc(item.text)+'</div>').join('');
+      initSortable();
     };
 
     // مقداردهی اولیه سوال امنیتی و تاریخ
@@ -962,12 +1210,49 @@ function teacherPage() {
         <hr style="border:none;border-top:1px solid var(--line);margin:14px 0">
         <h3>سوالات</h3>
         <div id="q-list"></div>
-        <div class="row" style="margin-top:12px">
-          <button class="btn gray sm" data-add="descriptive" style="flex:0 0 auto">+ تشریحی</button>
-          <button class="btn gray sm" data-add="multiple" style="flex:0 0 auto">+ چهارگزینه‌ای</button>
-          <button class="btn gray sm" data-add="truefalse" style="flex:0 0 auto">+ صحیح/غلط</button>
-          <button class="btn gray sm" data-add="short" style="flex:0 0 auto">+ کوتاه‌پاسخ</button>
+        <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:6px">
+          <button class="btn gray sm" data-add="descriptive" style="flex:0 0 auto">📝 تشریحی</button>
+          <button class="btn gray sm" data-add="multiple" style="flex:0 0 auto">☑️ چهارگزینه‌ای</button>
+          <button class="btn gray sm" data-add="truefalse" style="flex:0 0 auto">✓ صحیح/غلط</button>
+          <button class="btn gray sm" data-add="short" style="flex:0 0 auto">✏️ کوتاه‌پاسخ</button>
+          <button class="btn gray sm" data-add="matching" style="flex:0 0 auto">🔗 جورکردنی</button>
+          <button class="btn gray sm" data-add="fillblank" style="flex:0 0 auto">📝 جاخالی</button>
+          <button class="btn gray sm" data-add="sorting" style="flex:0 0 auto">↕️ مرتب‌سازی</button>
         </div>
+        <div class="row" style="margin-top:16px;flex-wrap:wrap;gap:6px">
+          <button class="btn sec sm" id="btn-preview-live">👁️ پیش‌نمایش زنده</button>
+          <button class="btn sec sm" id="btn-question-bank">📚 بانک سوالات</button>
+        </div>
+
+        <!-- مودال پیش‌نمایش زنده -->
+        <div id="preview-modal" class="modal hidden">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3>👁️ پیش‌نمایش آزمون</h3>
+              <button class="btn sm gray" onclick="closePreview()">✕ بستن</button>
+            </div>
+            <div class="modal-body" id="preview-content"></div>
+          </div>
+        </div>
+
+        <!-- مودال بانک سوالات -->
+        <div id="bank-modal" class="modal hidden">
+          <div class="modal-content" style="max-width:900px">
+            <div class="modal-header">
+              <h3>📚 بانک سوالات</h3>
+              <button class="btn sm gray" onclick="closeBank()">✕ بستن</button>
+            </div>
+            <div class="modal-body">
+              <div class="bank-actions">
+                <input type="text" id="bank-search" placeholder="جستجو در سوالات..." style="flex:1">
+                <button class="btn primary sm" onclick="addToBank()">➕ افزودن به بانک</button>
+                <button class="btn success sm" onclick="saveBank()">💾 ذخیره</button>
+              </div>
+              <div id="bank-list"></div>
+            </div>
+          </div>
+        </div>
+
         <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn" id="btn-save-q">ذخیره سوالات</button>
           <a class="btn sec" id="btn-word-exam" href="/api/teacher/word?type=questions">دانلود برگه آزمون (Word)</a>
@@ -1546,6 +1831,35 @@ function teacherScript() {
       body+='<label>عکس / شکل (اختیاری)</label>';
       if(q.image){body+='<img src="'+q.image+'" class="imgprev"><div><button class="btn sm danger" type="button" onclick="rmImg('+i+')">حذف عکس</button></div>';}
       else{body+='<input type="file" accept="image/*" onchange="loadImg('+i+',this)">';}
+      body+='<label>عکس‌های اضافی (آپلود چند عکس)</label>';
+      body+='<input type="file" accept="image/*" multiple onchange="addMultiImg('+i+',this)">';
+      if(q.images&&q.images.length){
+        body+='<div class="multi-img-preview">';
+        q.images.forEach((img,imgIdx)=>{body+='<div class="multi-img-item"><img src="'+img+'" class="imgprev"><button class="btn sm danger" onclick="rmMultiImg('+i+','+imgIdx+')">حذف</button></div>';});
+        body+='</div>';
+      }
+    }else if(q.type==='matching'){
+      body='<label>متن سوال</label><textarea data-qd="'+i+'" oninput="upd('+i+',\\'text\\',this.value)">'+esc(q.text)+'</textarea>';
+      body+='<label>جفت‌های جورکردنی (یکی در میان: سوال و جواب)</label>';
+      const opts=q.options||[];
+      for(let oi=0;oi<10;oi++){
+        body+='<div class="match-row"><input type="text" placeholder="سوال '+(oi+1)+'" value="'+esc(opts[oi*2]||'')+'" oninput="updMatchOpt('+i+','+(oi*2)+',this.value)"> <span>←→</span> <input type="text" placeholder="جواب '+(oi+1)+'" value="'+esc(opts[oi*2+1]||'')+'" oninput="updMatchOpt('+i+','+(oi*2+1)+',this.value)"></div>';
+      }
+      body+='<label>ترتیب صحیح جواب‌ها (برای تصحیح خودکار)</label><input type="text" value="'+esc(q.correct||'')+'" placeholder="مثال: ب,ج,الف,د" oninput="upd('+i+',\\'correct\\',this.value)">';
+    }else if(q.type==='fillblank'){
+      body='<label>متن سوال (از _______ برای جاخالی استفاده کنید)</label><textarea data-qd="'+i+'" oninput="upd('+i+',\\'text\\',this.value)" placeholder="مثال: پایتخت ایران _______ است.">'+esc(q.text)+'</textarea>';
+      body+='<label>پاسخ‌ها (با | از هم جدا کنید، به ترتیب جاخالی‌ها)</label><input type="text" value="'+esc(q.correct||'')+'" placeholder="مثال: تهران|۱۳۵۰|خاورمیانه" oninput="upd('+i+',\\'correct\\',this.value)">';
+      body+='<label>عکس (اختیاری)</label>';
+      if(q.image){body+='<div class="q-img-inline"><img src="'+q.image+'" class="imgprev"><button class="btn sm danger" onclick="rmImg('+i+')">حذف</button></div>';}
+      else{body+='<input type="file" accept="image/*" onchange="loadImg('+i+',this)">';}
+    }else if(q.type==='sorting'){
+      body='<label>متن سوال</label><textarea data-qd="'+i+'" oninput="upd('+i+',\\'text\\',this.value)">'+esc(q.text)+'</textarea>';
+      body+='<label>موارد برای مرتب‌سازی</label>';
+      const opts=q.options||[];
+      for(let oi=0;oi<8;oi++){
+        body+='<div class="sort-row"><span>'+(oi+1)+')</span><input type="text" value="'+esc(opts[oi]||'')+'" oninput="updSortOpt('+i+','+oi+',this.value)" placeholder="مورد '+(oi+1)+'"></div>';
+      }
+      body+='<label>ترتیب صحیح (شماره موارد با کاما جدا کنید)</label><input type="text" value="'+esc(q.correct||'')+'" placeholder="مثال: 3,1,4,2" oninput="upd('+i+',\\'correct\\',this.value)">';
     }else{
       body='<label>متن سوال</label><textarea data-qd="'+i+'" oninput="upd('+i+',\\'text\\',this.value)">'+esc(q.text)+'</textarea>';
       if(q.type==='multiple'){
@@ -1574,6 +1888,8 @@ function teacherScript() {
   }
   window.upd=(i,k,v)=>{QUESTIONS[i][k]=v;};
   window.updOpt=(i,oi,v)=>{QUESTIONS[i].options=QUESTIONS[i].options||['','','',''];QUESTIONS[i].options[oi]=v;};
+  window.updMatchOpt=(i,oi,v)=>{QUESTIONS[i].options=QUESTIONS[i].options||[];QUESTIONS[i].options[oi]=v;};
+  window.updSortOpt=(i,oi,v)=>{QUESTIONS[i].options=QUESTIONS[i].options||[];QUESTIONS[i].options[oi]=v;};
   window.delQ=(i)=>{QUESTIONS.splice(i,1);renderQ();};
   window.moveQ=(i,dir)=>{const j=i+dir;if(j<0||j>=QUESTIONS.length)return;const t=QUESTIONS[i];QUESTIONS[i]=QUESTIONS[j];QUESTIONS[j]=t;renderQ();};
 
@@ -1666,10 +1982,30 @@ function teacherScript() {
       };img.src=ev.target.result;
     };rd.readAsDataURL(f);
   };
+  window.addMultiImg=(i,input)=>{
+    Array.from(input.files).forEach(f=>{
+      const rd=new FileReader();
+      rd.onload=ev=>{
+        const img=new Image();
+        img.onload=()=>{
+          const c=document.createElement('canvas');const mw=800;let w=img.width,h=img.height;
+          if(w>mw){h=Math.round(h*mw/w);w=mw;}
+          c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);
+          QUESTIONS[i].images=QUESTIONS[i].images||[];
+          QUESTIONS[i].images.push(c.toDataURL('image/jpeg',0.85));
+          renderQ();
+        };img.src=ev.target.result;
+      };rd.readAsDataURL(f);
+    });
+  };
   window.rmImg=(i)=>{QUESTIONS[i].image='';renderQ();};
+  window.rmMultiImg=(i,imgIdx)=>{QUESTIONS[i].images.splice(imgIdx,1);renderQ();};
   document.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{
     const t=b.dataset.add;
-    QUESTIONS.push({id:uid(),type:t,rich:t==='descriptive',text:'',options:t==='multiple'?['','','','']:[],correct:t==='multiple'?'0':(t==='truefalse'?'true':''),image:''});
+    let q={id:uid(),type:t,rich:t==='descriptive',text:'',options:[],correct:'',image:'',images:[]};
+    if(t==='multiple'){q.options=['','','',''];q.correct='0';}
+    if(t==='truefalse'){q.correct='true';}
+    QUESTIONS.push(q);
     renderQ();
   });
   document.getElementById('btn-save-q').onclick=async()=>{
@@ -1682,6 +2018,87 @@ function teacherScript() {
     const d=await api('/api/teacher/questions',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({questions:QUESTIONS,meta:META})});
     if(d.ok)toast('ذخیره شد');else toast(d.error||'خطا');
   };
+
+  // ---- پیش‌نمایش زنده ----
+  document.getElementById('btn-preview-live').onclick=()=>{
+    const content=document.getElementById('preview-content');
+    let html='<div class="preview-exam">';
+    html+='<h4>'+esc(document.getElementById('m-exam-name').value||'آزمون')+'</h4>';
+    html+='<p class="muted">مدرسه: '+esc(document.getElementById('m-school').value||'')+' | آموزگار: '+esc(document.getElementById('m-teacher').value||'')+'</p>';
+    QUESTIONS.forEach((q,i)=>{
+      let qhtml='<div class="q-preview"><b>'+(i+1)+'. '+esc(q.text||'سوال '+i)+'</b>';
+      if(q.type==='multiple'){
+        (q.options||[]).forEach((o,oi)=>{qhtml+='<div>☐ '+['الف','ب','ج','د'][oi]+') '+esc(o)+'</div>';});
+      }else if(q.type==='truefalse'){
+        qhtml+='<div>☐ صحیح &nbsp; ☐ غلط</div>';
+      }else if(q.type==='matching'){
+        const left=(q.options||[]).filter((_,j)=>j%2===0);
+        const right=(q.options||[]).filter((_,j)=>j%2===1);
+        qhtml+='<div style="display:flex;gap:30px;margin-top:8px">';
+        qhtml+='<div>'+left.map((o,oi)=>'<div>'+(oi+1)+') '+esc(o)+' _____</div>').join('')+'</div>';
+        qhtml+='<div>'+right.map((o,oi)=>'<div>'+['الف','ب','ج','د','ه'][oi]+') '+esc(o)+'</div>').join('')+'</div>';
+        qhtml+='</div>';
+      }else if(q.type==='fillblank'){
+        qhtml+='<div>'+esc(q.text||'').replace(/_______/g,'______')+'</div>';
+      }else if(q.type==='sorting'){
+        (q.options||[]).forEach((o,oi)=>{qhtml+='<div>'+(oi+1)+') '+esc(o)+'</div>';});
+      }else{
+        qhtml+='<div style="height:40px;border-bottom:1px dashed #999"></div>';
+      }
+      qhtml+='<span class="badge">'+TYPES[q.type]+'</span></div>';
+      html+=qhtml;
+    });
+    html+='</div>';
+    content.innerHTML=html;
+    document.getElementById('preview-modal').classList.remove('hidden');
+  };
+  window.closePreview=()=>document.getElementById('preview-modal').classList.add('hidden');
+
+  // ---- بانک سوالات ----
+  let QBANK=[];
+  document.getElementById('btn-question-bank').onclick=async()=>{
+    QBANK=[];
+    const d=await api('/api/teacher/bank');
+    QBANK=d.bank||[];
+    renderBank();
+    document.getElementById('bank-modal').classList.remove('hidden');
+  };
+  window.closeBank=()=>document.getElementById('bank-modal').classList.add('hidden');
+  window.addToBank=()=>{
+    if(!QUESTIONS.length){toast('سوالی برای افزودن نیست');return;}
+    QUESTIONS.forEach(q=>{
+      QBANK.push({...q,id:uid(),addedAt:Date.now()});
+    });
+    renderBank();
+    toast('سوالات به بانک اضافه شدند');
+  };
+  window.saveBank=async()=>{
+    const d=await api('/api/teacher/bank',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({bank:QBANK})});
+    if(d.ok)toast('بانک ذخیره شد');else toast('خطا در ذخیره');
+  };
+  window.deleteBankItem=(i)=>{QBANK.splice(i,1);renderBank();};
+  window.useBankItem=(i)=>{
+    const q=QBANK[i];
+    QUESTIONS.push({...q,id:uid()});
+    renderQ();
+    toast('سوال اضافه شد');
+  };
+  window.renderBank=(search='')=>{
+    const box=document.getElementById('bank-list');
+    const filtered=search?QBANK.filter(q=>q.text&&q.text.includes(search)):QBANK;
+    if(!filtered.length){box.innerHTML='<p class="muted">سوالی در بانک نیست.</p>';return;}
+    box.innerHTML=filtered.map((q,i)=>{
+      const origIdx=QBANK.indexOf(q);
+      return '<div class="bank-item">'+
+        '<div class="q-type">'+TYPES[q.type]+'</div>'+
+        '<div class="q-text">'+esc(q.text||'...')+'</div>'+
+        '<div class="bank-actions-bar">'+
+        '<button class="btn sm primary" onclick="useBankItem('+origIdx+')">استفاده</button>'+
+        '<button class="btn sm danger" onclick="deleteBankItem('+origIdx+')">حذف</button>'+
+        '</div></div>';
+    }).join('');
+  };
+  document.getElementById('bank-search').oninput=function(){renderBank(this.value);};
 
   // ---- تصحیح و پاسخنامه‌ها ----
   function ansText(q,ans){
@@ -1707,12 +2124,15 @@ function teacherScript() {
           '<td><input type="text" id="fb_'+s.uuid+'_'+q.id+'" value="'+esc(fb)+'" placeholder="بازخورد"></td></tr>';
       }).join('');
       const badge=g.graded?'<span class="pill ok">تصحیح‌شده</span>':'<span class="pill gr">در انتظار تصحیح</span>';
-      return '<div class="q-block"><div class="qhead"><b>'+esc(s.student.name)+'</b> '+badge+
+      const scoreInfo=s.score?'<span class="pill">'+s.score.correct+'/'+s.score.total+'</span>':'';
+      return '<div class="q-block"><div class="qhead"><b>'+esc(s.student.name)+'</b> '+badge+scoreInfo+
         ' <a class="btn sm sec" href="/api/teacher/word?type=answers&uuid='+s.uuid+'">دانلود Word</a></div>'+
         '<p class="muted">نام پدر: '+esc(s.student.fatherName)+' | کد ملی: '+esc(s.student.nationalId)+' | نام درس: '+esc(s.student.courseName||'')+' | تاریخ آزمون: '+esc(s.student.examDate||'')+' | ثبت: '+new Date(s.submittedAt).toLocaleString('fa-IR')+'</p>'+
         '<table><tr><th>#</th><th>سوال</th><th>پاسخ دانش‌آموز</th><th>وضعیت</th><th>بازخورد</th></tr>'+rows+'</table>'+
         '<label>بازخورد کلی</label><textarea id="ov_'+s.uuid+'">'+esc(g.overall||'')+'</textarea>'+
-        '<button class="btn" style="margin-top:8px" onclick="saveGrade(\\''+s.uuid+'\\')">ثبت تصحیح</button></div>';
+        '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'+
+        '<button class="btn primary" onclick="autoGrade(\\''+s.uuid+'\\')">🤖 تصحیح خودکار</button>'+
+        '<button class="btn" onclick="saveGrade(\\''+s.uuid+'\\')">ثبت تصحیح</button></div></div>';
     }).join('');
   }
   window.saveGrade=async(uuid)=>{
@@ -1726,6 +2146,13 @@ function teacherScript() {
     const overall=document.getElementById('ov_'+uuid).value;
     const d=await api('/api/teacher/grade',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({uuid,feedback,marks,overall})});
     if(d.ok){toast('تصحیح ثبت شد');loadAnswers();}else toast(d.error||'خطا');
+  };
+  window.autoGrade=async(uuid)=>{
+    const d=await api('/api/teacher/auto-grade',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({submissionId:uuid})});
+    if(d.ok){
+      toast('تصحیح خودکار انجام شد: '+d.score.correct+'/'+d.score.total);
+      loadAnswers();
+    }else toast(d.error||'خطا در تصحیح خودکار');
   };
   document.getElementById('btn-refresh-ans').onclick=loadAnswers;
 
