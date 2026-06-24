@@ -1035,14 +1035,38 @@ async function studentPage(env, id) {
     }
 
     async function load(){
-      const r = await fetch('/api/exam/'+encodeURIComponent(ID));
-      const d = await r.json();
-      if(!d.ok){document.body.innerHTML='<div class="wrap"><div class="card"><h2>'+d.error+'</h2></div></div>';return;}
-      DATA = d;
-      document.getElementById('hdr2').innerHTML='<h3 style="margin:0">'+esc(d.meta.school||'')+'</h3>'+
-        (d.meta.examName?'<p style="margin:4px 0 0;font-size:14px">آزمون: '+esc(d.meta.examName)+'</p>':'');
-      if(d.submitted){ renderResult(d.result); }
-      else { document.getElementById('step-info').classList.remove('hidden'); }
+      try {
+        document.getElementById('hdr2').innerHTML='<div style="padding:20px;text-align:center"><p>⏳ در حال بارگذاری...</p></div>';
+        const r = await fetch('/api/exam/'+encodeURIComponent(ID));
+        
+        if(!r.ok){
+          document.body.innerHTML='<div class="wrap"><div class="card"><h2>❌ خطا در بارگذاری</h2><p>کد خطا: '+r.status+'</p></div></div>';
+          return;
+        }
+        
+        let d;
+        try {
+          d = await r.json();
+        } catch(e) {
+          document.body.innerHTML='<div class="wrap"><div class="card"><h2>❌ خطا در پاسخ سرور</h2><p>داده‌های نامعتبر دریافت شد.</p></div></div>';
+          return;
+        }
+        
+        if(!d.ok){
+          document.body.innerHTML='<div class="wrap"><div class="card"><h2>❌ '+esc(d.error||'خطا')+'</h2></div></div>';
+          return;
+        }
+        
+        DATA = d;
+        document.getElementById('hdr2').innerHTML='<h3 style="margin:0">'+esc(d.meta.school||'')+'</h3>'+
+          (d.meta.examName?'<p style="margin:4px 0 0;font-size:14px">آزمون: '+esc(d.meta.examName)+'</p>':'');
+        if(d.submitted){ renderResult(d.result); }
+        else { document.getElementById('step-info').classList.remove('hidden'); }
+        
+      } catch(err) {
+        console.error('load error:', err);
+        document.body.innerHTML='<div class="wrap"><div class="card"><h2>❌ خطا در اتصال</h2><p>لطفاً اتصال اینترنت را بررسی کنید.</p><p style="font-size:12px;color:#666">'+esc(err.message||'')+'</p></div></div>';
+      }
     }
 
     function renderResult(res){
