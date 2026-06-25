@@ -1,0 +1,17 @@
+# Cloudflare Workers Configuration
+name = "panel-amozeshi-hooshmand"
+main = "educational-panel.js"
+compatibility_date = "2024-01-01"
+
+# KV Namespace for Database
+[[kv_namespaces]]
+binding = "DB"
+id = "YOUR_KV_NAMESPACE_ID"
+
+# Environment Variables (set these in Cloudflare dashboard)
+# GROQ_API_KEY - For AI Chat feature (optional)
+
+# Dev Configuration
+[dev]
+port = 8787
+local_protocol = "http"
