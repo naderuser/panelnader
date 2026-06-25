@@ -6,8 +6,10 @@
  *  - پنل معلم (ورود/خروج، تغییر رمز عبور، تم روشن/تاریک)
  *  - مدیریت دانش‌آموزان با لینک اختصاصی
  *  - آزمون‌سازی با انواع سوال (تشریحی، چهارگزینه‌ای، صحیح/غلط، کوتاه‌پاسخ)
+ *  - سربرگ کامل آزمون (نام مدرسه، نام آموزگار، نام آزمون، مدت زمان آزمون به دقیقه)
+ *  - تایمر معکوس برای دانش‌آموز (Countdown Timer)
  *  - ویرایشگر غنی سوال (علائم ریاضی، کسر، تقسیم چکشی، اشکال هندسی SVG، عکس)
- *  - صفحه آزمون دانش‌آموز با سوال امنیتی
+ *  - صفحه آزمون دانش‌آموز با سوال امنیتی و نمایش تایمر
  *  - تصحیح و بازخورد (دستی + خودکار برای چندگزینه‌ای)
  *  - پاسخنامه‌ها با وضعیت‌های مختلف
  *  - برنامه هفتگی با خروجی Word/PDF/چاپ و ذخیره در KV
@@ -26,6 +28,9 @@ const APP_DESIGNER = "طراح: نادر اکشیک";
 
 const DEFAULT_META = {
   school: "",
+  teacher: "",
+  examName: "",
+  examDuration: "30", // مدت زمان به دقیقه
 };
 
 const QUESTION_TYPES = {
@@ -247,9 +252,15 @@ async function handleApi(req, env, url, path) {
     if (parts[1] === "submit" && method === "POST") {
       const existing = await env.EXAM_KV.get("submission:" + id);
       if (existing) return json({ ok: false, error: "این آزمون قبلاً ثبت شده است" }, 409);
+      
       const body = await req.json().catch(() => ({}));
       const meta = await getMeta(env);
       const questions = await getQuestions(env);
+      
+      // محاسبه زمان پایان آزمون (بر اساس مدت زمان)
+      const durationMinutes = parseInt(meta.examDuration) || 30;
+      const endTime = Date.now() + (durationMinutes * 60 * 1000);
+      
       const submission = {
         uuid: id,
         student: {
@@ -263,6 +274,7 @@ async function handleApi(req, env, url, path) {
         meta,
         questionsSnapshot: questions,
         submittedAt: Date.now(),
+        endTime: endTime,
         grading: null,
       };
       await env.EXAM_KV.put("submission:" + id, JSON.stringify(submission));
@@ -273,13 +285,23 @@ async function handleApi(req, env, url, path) {
       const meta = await getMeta(env);
       const subRaw = await env.EXAM_KV.get("submission:" + id);
       const st = JSON.parse(studentRaw);
+      
       if (subRaw) {
         const sub = JSON.parse(subRaw);
         const resultQuestions = (sub.questionsSnapshot || []).map(safeQuestion);
+        
+        // محاسبه زمان باقیمانده
+        const now = Date.now();
+        const remaining = Math.max(0, Math.floor((sub.endTime - now) / 1000));
+        const isExpired = remaining <= 0;
+        
         return json({
           ok: true,
           meta,
           submitted: true,
+          timeCheck: true,
+          remaining: remaining,
+          isExpired: isExpired,
           result: {
             questions: resultQuestions,
             answers: sub.answers || {},
@@ -289,7 +311,17 @@ async function handleApi(req, env, url, path) {
         });
       }
       const questions = (await getQuestions(env)).map(safeQuestion);
-      return json({ ok: true, meta, submitted: false, questions, label: st.label || "" });
+      const durationMinutes = parseInt(meta.examDuration) || 30;
+      
+      return json({ 
+        ok: true, 
+        meta, 
+        submitted: false, 
+        questions, 
+        label: st.label || "", 
+        timeCheck: true,
+        duration: durationMinutes * 60 // به ثانیه
+      });
     }
   }
 
@@ -501,12 +533,13 @@ function wordResponse(bodyHtml, filename) {
 }
 
 function wordHeader(meta, extra = "") {
-  return (
-    `<div class="hdr">` +
-    `<h1>${esc(meta.school || "")}</h1>` +
-    `</div>` +
-    extra
-  );
+  let html = `<div class="hdr">`;
+  if (meta.school) html += `<h1>${esc(meta.school)}</h1>`;
+  if (meta.examName) html += `<h2>${esc(meta.examName)}</h2>`;
+  if (meta.teacher) html += `<h3>آموزگار: ${esc(meta.teacher)}</h3>`;
+  if (meta.examDuration) html += `<h3>مدت زمان: ${esc(meta.examDuration)} دقیقه</h3>`;
+  html += `</div>`;
+  return html + extra;
 }
 
 function questionBodyWord(q) {
@@ -531,7 +564,7 @@ function examWord(meta, questions) {
   body +=
     `<table class="meta-table">` +
     `<tr><td>نام و نام خانوادگی: ...................</td><td>نام پدر: ...................</td><td>کد ملی: ...................</td></tr>` +
-    `<tr><td>نام درس: ...................</td><td>تاریخ آزمون: ...................</td><td>کلاس: ...................</td></tr>` +
+    `<tr><td>نام درس: ...................</td><td>کلاس: ...................</td><td></td></tr>` +
     `</table>`;
 
   questions.forEach((q, i) => {
@@ -571,7 +604,7 @@ function answerSheetWord(sub) {
   body +=
     `<table class="meta-table">` +
     `<tr><td>نام و نام خانوادگی: ${esc(st.name)}</td><td>نام پدر: ${esc(st.fatherName)}</td><td>کد ملی: ${esc(st.nationalId)}</td></tr>` +
-    `<tr><td>نام درس: ${esc(st.courseName)}</td><td>تاریخ آزمون: ${esc(st.examDate)}</td><td>تاریخ ثبت: ${esc(new Date(sub.submittedAt).toLocaleString("fa-IR"))}</td></tr>` +
+    `<tr><td>نام درس: ${esc(st.courseName)}</td><td>تاریخ ثبت: ${esc(new Date(sub.submittedAt).toLocaleString("fa-IR"))}</td><td></td></tr>` +
     `</table>`;
 
   body += `<table class="q"><tr><th class="qnum">ردیف</th><th>سوال</th><th>پاسخ دانش‌آموز</th><th>وضعیت</th><th>بازخورد معلم</th></tr>`;
@@ -801,6 +834,21 @@ const SHARED_CSS = `
   .ai-input-area textarea{flex:1;padding:12px 16px;border:2px solid #e2e8f0;border-radius:12px;resize:none;font-size:14px;line-height:1.5;max-height:120px;font-family:inherit}
   .ai-input-area textarea:focus{border-color:#667eea;outline:none}
   .ai-send-btn{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;padding:0}
+  
+  /* ---- Timer ---- */
+  .exam-timer{background:linear-gradient(135deg,#1a1a2e,#16213e);color:#fff;border-radius:16px;padding:20px;text-align:center;margin-bottom:16px;border:2px solid #0f3460}
+  .exam-timer .timer-display{font-size:48px;font-weight:700;font-family:monospace;letter-spacing:4px;color:#00d2ff;text-shadow:0 0 20px rgba(0,210,255,0.3)}
+  .exam-timer .timer-label{font-size:14px;color:#94a3b8;margin-top:4px}
+  .exam-timer.warning .timer-display{color:#f59e0b;text-shadow:0 0 20px rgba(245,158,11,0.3)}
+  .exam-timer.danger .timer-display{color:#ef4444;text-shadow:0 0 20px rgba(239,68,68,0.3);animation:blink 1s ease-in-out infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+  
+  /* ---- Exam Time Status ---- */
+  .exam-time-status{padding:12px 16px;border-radius:10px;margin-bottom:16px;font-weight:600;display:flex;align-items:center;gap:10px}
+  .exam-time-status.valid{background:#dcfce7;color:#166534;border:1px solid #bbf7d0}
+  .exam-time-status.invalid{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
+  .exam-time-status.waiting{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
+  .exam-time-status .time-icon{font-size:24px}
 `;
 
 const FONT_LINK = `<link rel="preconnect" href="https://cdn.jsdelivr.net"><link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet">`;
@@ -861,15 +909,19 @@ async function studentPage(env, id) {
       <div class="row">
         <div><label>کد ملی *</label><input id="f-nid" inputmode="numeric" autocomplete="off"></div>
         <div><label>نام درس *</label><input id="f-course" autocomplete="off"></div>
-        <div><label>تاریخ آزمون *</label><input id="f-date" autocomplete="off"></div>
+        <div><label>تاریخ آزمون *</label><input id="f-date" autocomplete="off" placeholder="مثال: 1404/01/15"></div>
       </div>
       <label>سوال امنیتی: <span id="sec-q"></span> *</label><input id="f-sec" inputmode="numeric" autocomplete="off">
       <p class="muted" id="info-err" style="color:var(--danger)"></p>
       <button class="btn" id="btn-enter">ورود به آزمون</button>
     </div>
 
-    <!-- مرحله ۲: سوالات -->
+    <!-- مرحله ۲: سوالات با تایمر -->
     <div class="card hidden" id="step-exam">
+      <div class="exam-timer" id="timer-container">
+        <div class="timer-display" id="timer-display">00:00</div>
+        <div class="timer-label">⏱️ زمان باقیمانده</div>
+      </div>
       <h3>سوالات آزمون</h3>
       <div id="questions"></div>
       <button class="btn sec" id="btn-submit" style="margin-top:16px">ثبت نهایی پاسخنامه</button>
@@ -882,6 +934,9 @@ async function studentPage(env, id) {
   <script>
     const ID = ${JSON.stringify(id)};
     let DATA = null;
+    let timerInterval = null;
+    let remainingSeconds = 0;
+    let isTimerExpired = false;
     const a = Math.floor(Math.random()*8)+2, b = Math.floor(Math.random()*8)+2;
 
     function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
@@ -894,17 +949,83 @@ async function studentPage(env, id) {
       return esc(ans);
     }
 
+    function formatTime(seconds){
+      const m = Math.floor(seconds / 60);
+      const s = seconds % 60;
+      return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+    }
+
+    function startTimer(seconds){
+      remainingSeconds = seconds;
+      isTimerExpired = false;
+      const display = document.getElementById('timer-display');
+      const container = document.getElementById('timer-container');
+      
+      if(timerInterval) clearInterval(timerInterval);
+      
+      timerInterval = setInterval(() => {
+        remainingSeconds--;
+        if(remainingSeconds <= 0){
+          clearInterval(timerInterval);
+          remainingSeconds = 0;
+          isTimerExpired = true;
+          container.className = 'exam-timer danger';
+          display.textContent = '00:00';
+          toast('⏰ زمان آزمون به پایان رسید!');
+          // غیرفعال کردن دکمه ثبت و ارسال خودکار
+          document.getElementById('btn-submit').disabled = true;
+          document.getElementById('btn-submit').textContent = '⏰ زمان تمام شد';
+          // ارسال خودکار پاسخنامه
+          submitExam(true);
+          return;
+        }
+        
+        display.textContent = formatTime(remainingSeconds);
+        
+        // تغییر رنگ بر اساس زمان باقیمانده
+        if(remainingSeconds <= 60){
+          container.className = 'exam-timer danger';
+        } else if(remainingSeconds <= 300){
+          container.className = 'exam-timer warning';
+        } else {
+          container.className = 'exam-timer';
+        }
+      }, 1000);
+    }
+
     async function load(){
       const r = await fetch('/api/exam/'+encodeURIComponent(ID));
       const d = await r.json();
-      if(!d.ok){document.body.innerHTML='<div class="wrap"><div class="card"><h2>'+d.error+'</h2></div></div>';return;}
+      
+      if(!d.ok){
+        document.body.innerHTML = '<div class="wrap"><div class="card" style="text-align:center;padding:40px"><div style="font-size:48px;margin-bottom:16px">❌</div><h2 style="color:var(--danger)">'+esc(d.error)+'</h2><p class="muted">لطفاً با معلم خود تماس بگیرید.</p><a href="/" class="btn" style="margin-top:16px">بازگشت به صفحه اصلی</a></div></div>';
+        return;
+      }
+      
       DATA = d;
-      document.getElementById('hdr2').innerHTML='<h3 style="margin:0">'+esc(d.meta.school||'')+'</h3>';
-      if(d.submitted){ renderResult(d.result); }
-      else { document.getElementById('step-info').classList.remove('hidden'); }
+      document.getElementById('hdr2').innerHTML = '<h3 style="margin:0">'+esc(d.meta.school || '')+'</h3>';
+      
+      const headerInfo = document.createElement('div');
+      headerInfo.style.cssText = 'padding:12px;background:var(--card);border:1px solid var(--line);border-radius:8px;margin-bottom:16px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px';
+      headerInfo.innerHTML = '<span><b>📝</b> '+esc(d.meta.examName || 'آزمون')+'</span><span><b>👨‍🏫</b> '+esc(d.meta.teacher || '')+'</span><span><b>⏱️</b> '+esc(d.meta.examDuration || '30')+' دقیقه</span>';
+      document.getElementById('hdr2').after(headerInfo);
+      
+      if (d.submitted) {
+        if(d.isExpired){
+          toast('⏰ زمان آزمون به پایان رسیده است');
+        }
+        renderResult(d.result);
+      } else {
+        document.getElementById('step-info').classList.remove('hidden');
+        try {
+          const now = new Date();
+          document.getElementById('f-date').value = now.toLocaleDateString('fa-IR', {year:'numeric', month:'2-digit', day:'2-digit'}).replace(/\\//g, '/');
+        } catch(e) {}
+      }
     }
 
     function renderResult(res){
+      document.getElementById('step-exam').classList.add('hidden');
       const done=document.getElementById('step-done');
       done.classList.remove('hidden');
       if(!res.grading || !res.grading.graded){
@@ -947,6 +1068,47 @@ async function studentPage(env, id) {
       }).join('');
     }
 
+    async function submitExam(autoSubmit = false){
+      const answers={};
+      DATA.questions.forEach(q=>{
+        if(q.type==='multiple'||q.type==='truefalse'){
+          const sel=document.querySelector('input[name="q_'+q.id+'"]:checked');
+          answers[q.id]=sel?sel.value:'';
+        }else{
+          const el=document.querySelector('[data-q="'+q.id+'"]');
+          answers[q.id]=el?el.value:'';
+        }
+      });
+      
+      const btn=document.getElementById('btn-submit');
+      btn.disabled=true;
+      btn.textContent=autoSubmit ? '⏰ ارسال خودکار...' : 'در حال ثبت...';
+      
+      try {
+        const r=await fetch('/api/exam/'+encodeURIComponent(ID)+'/submit',{
+          method:'POST',
+          headers:{'content-type':'application/json'},
+          body:JSON.stringify({...window._student, answers})
+        });
+        const d=await r.json();
+        if(d.ok){
+          document.getElementById('step-exam').classList.add('hidden');
+          renderResult({grading:null});
+          if(autoSubmit){
+            toast('⏰ زمان تمام شد! پاسخنامه شما به طور خودکار ثبت شد.');
+          }
+        }else{
+          toast(d.error||'خطا در ثبت');
+          btn.disabled=false;
+          btn.textContent='ثبت نهایی پاسخنامه';
+        }
+      } catch(e) {
+        toast('خطا در اتصال');
+        btn.disabled=false;
+        btn.textContent='ثبت نهایی پاسخنامه';
+      }
+    }
+
     document.getElementById('btn-enter').onclick=()=>{
       const name=document.getElementById('f-name').value.trim();
       const father=document.getElementById('f-father').value.trim();
@@ -962,30 +1124,24 @@ async function studentPage(env, id) {
       document.getElementById('step-info').classList.add('hidden');
       document.getElementById('step-exam').classList.remove('hidden');
       renderQuestions();
+      
+      // شروع تایمر
+      if(DATA.duration){
+        startTimer(DATA.duration);
+      }
     };
 
-    document.getElementById('btn-submit').onclick=async()=>{
-      const answers={};
-      DATA.questions.forEach(q=>{
-        if(q.type==='multiple'||q.type==='truefalse'){
-          const sel=document.querySelector('input[name="q_'+q.id+'"]:checked');
-          answers[q.id]=sel?sel.value:'';
-        }else{
-          const el=document.querySelector('[data-q="'+q.id+'"]');
-          answers[q.id]=el?el.value:'';
-        }
-      });
-      const btn=document.getElementById('btn-submit');btn.disabled=true;btn.textContent='در حال ثبت...';
-      const r=await fetch('/api/exam/'+encodeURIComponent(ID)+'/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...window._student,answers})});
-      const d=await r.json();
-      if(d.ok){
-        document.getElementById('step-exam').classList.add('hidden');
-        renderResult({grading:null});
-      }else{toast(d.error||'خطا در ثبت');btn.disabled=false;btn.textContent='ثبت نهایی پاسخنامه';}
+    document.getElementById('btn-submit').onclick=()=>{
+      if(confirm('آیا از ثبت نهایی پاسخنامه مطمئن هستید؟')) {
+        submitExam(false);
+      }
     };
 
     document.getElementById('sec-q').textContent = a + ' + ' + b + ' = ؟';
-    try{ document.getElementById('f-date').value = new Date().toLocaleDateString('fa-IR'); }catch(e){}
+    try{ 
+      const now = new Date();
+      document.getElementById('f-date').value = now.toLocaleDateString('fa-IR', {year:'numeric', month:'2-digit', day:'2-digit'}).replace(/\\//g, '/');
+    }catch(e){}
     load();
   </script></body></html>`);
 }
@@ -1003,7 +1159,6 @@ function teacherPage() {
   <body><div class="wrap">
     ${pageHeader()}
 
-    <!-- ورود -->
     <div class="card" id="login">
       <h3 id="login-head">ورود معلم</h3>
       <p class="muted" id="login-hint"></p>
@@ -1012,7 +1167,6 @@ function teacherPage() {
       <button class="btn" id="btn-login">ورود</button>
     </div>
 
-    <!-- داشبورد -->
     <div id="dash" class="hidden">
       <div class="tabs">
         <div class="tab active" data-tab="students">👨‍🎓 دانش‌آموزان</div>
@@ -1031,7 +1185,6 @@ function teacherPage() {
         <div class="tab" id="btn-logout" style="background:#fee2e2;color:#991b1b">🚪 خروج</div>
       </div>
 
-      <!-- دانش‌آموزان -->
       <div class="card tab-content" id="tab-students">
         <h3>ساخت دانش‌آموز جدید</h3>
         <div class="row">
@@ -1042,10 +1195,23 @@ function teacherPage() {
         <div id="students-list"></div>
       </div>
 
-      <!-- سوالات -->
       <div class="card tab-content hidden" id="tab-questions">
-        <h3>سربرگ آزمون</h3>
-        <label>نام مدرسه</label><input id="m-school">
+        <h3>📝 سربرگ آزمون</h3>
+        <div class="row">
+          <div><label>🏫 نام مدرسه</label><input id="m-school" placeholder="نام مدرسه"></div>
+          <div><label>👨‍🏫 نام آموزگار</label><input id="m-teacher" placeholder="نام آموزگار"></div>
+        </div>
+        <div class="row">
+          <div><label>📝 نام آزمون</label><input id="m-exam-name" placeholder="نام آزمون"></div>
+          <div><label>⏱️ مدت زمان (دقیقه)</label>
+            <input id="m-exam-duration" type="number" min="1" max="180" value="30">
+            <span class="muted" style="font-size:12px">مدت زمان آزمون به دقیقه</span>
+          </div>
+        </div>
+        <div id="exam-time-status-display" class="exam-time-status valid">
+          <span class="time-icon">⏱️</span>
+          <span>مدت زمان: <span id="duration-display">30</span> دقیقه</span>
+        </div>
         <hr style="border:none;border-top:1px solid var(--line);margin:14px 0">
         <h3>سوالات</h3>
         <div id="q-list"></div>
@@ -1056,19 +1222,17 @@ function teacherPage() {
           <button class="btn gray sm" data-add="short" style="flex:0 0 auto">+ کوتاه‌پاسخ</button>
         </div>
         <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn" id="btn-save-q">ذخیره سوالات</button>
-          <a class="btn sec" id="btn-word-exam" href="/api/teacher/word?type=questions">دانلود برگه آزمون (Word)</a>
+          <button class="btn" id="btn-save-q">💾 ذخیره سربرگ و سوالات</button>
+          <a class="btn sec" id="btn-word-exam" href="/api/teacher/word?type=questions">📄 دانلود برگه آزمون (Word)</a>
         </div>
       </div>
 
-      <!-- پاسخنامه‌ها -->
       <div class="card tab-content hidden" id="tab-answers">
         <h3>تصحیح و پاسخنامه‌ها</h3>
         <button class="btn gray sm" id="btn-refresh-ans">به‌روزرسانی</button>
         <div id="answers-list"></div>
       </div>
 
-      <!-- برنامه هفتگی -->
       <div class="card tab-content hidden" id="tab-schedule">
         <h3>📅 برنامه هفتگی</h3>
         <div class="row" style="margin-bottom:16px">
@@ -1096,22 +1260,12 @@ function teacherPage() {
         <button class="btn" id="btn-save-schedule">💾 ذخیره در سرور</button>
       </div>
 
-      <!-- جدول‌ساز -->
       <div class="card tab-content hidden" id="tab-tables">
         <h3>📊 جدول‌ساز حرفه‌ای</h3>
         <div class="row" style="margin-bottom:16px">
-          <div>
-            <label style="display:block;margin-bottom:4px">تعداد سطر:</label>
-            <input type="number" id="tbl-rows" value="5" min="1" max="50" style="width:100px;padding:8px;border:1px solid #ddd;border-radius:6px">
-          </div>
-          <div>
-            <label style="display:block;margin-bottom:4px">تعداد ستون:</label>
-            <input type="number" id="tbl-cols" value="4" min="1" max="20" style="width:100px;padding:8px;border:1px solid #ddd;border-radius:6px">
-          </div>
-          <div>
-            <label style="display:block;margin-bottom:4px">عنوان جدول:</label>
-            <input type="text" id="tbl-title" placeholder="مثال: لیست نمرات" style="width:200px;padding:8px;border:1px solid #ddd;border-radius:6px">
-          </div>
+          <div><label style="display:block;margin-bottom:4px">تعداد سطر:</label><input type="number" id="tbl-rows" value="5" min="1" max="50" style="width:100px;padding:8px;border:1px solid #ddd;border-radius:6px"></div>
+          <div><label style="display:block;margin-bottom:4px">تعداد ستون:</label><input type="number" id="tbl-cols" value="4" min="1" max="20" style="width:100px;padding:8px;border:1px solid #ddd;border-radius:6px"></div>
+          <div><label style="display:block;margin-bottom:4px">عنوان جدول:</label><input type="text" id="tbl-title" placeholder="مثال: لیست نمرات" style="width:200px;padding:8px;border:1px solid #ddd;border-radius:6px"></div>
         </div>
         <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer">
           <input type="checkbox" id="tbl-avg-check">
@@ -1129,7 +1283,6 @@ function teacherPage() {
         <button class="btn gray" id="btn-excel-table">📊 دانلود Excel</button>
       </div>
 
-      <!-- اسکنر -->
       <div class="card tab-content hidden" id="tab-scan">
         <h3>📷 اسکنر حرفه‌ای (مشابه CamScanner)</h3>
         <p class="muted">عکس‌های خود را با کیفیت بالا اسکن کنید</p>
@@ -1169,7 +1322,6 @@ function teacherPage() {
         </div>
       </div>
 
-      <!-- کاهش حجم -->
       <div class="card tab-content hidden" id="tab-resize">
         <h3>🗜️ کاهش حجم عکس</h3>
         <p class="muted">عکس‌ها را با کیفیت دلخواه فشرده کنید</p>
@@ -1181,46 +1333,16 @@ function teacherPage() {
         </div>
         <div id="resize-controls" class="hidden">
           <div class="resize-options">
-            <div class="resize-group">
-              <label>📊 کیفیت تصویر</label>
-              <input type="range" id="resize-quality" min="10" max="100" value="85">
-              <div class="quality-display"><span id="quality-percent">85%</span><span class="muted" id="quality-estimate">حدود 500 کیلوبایت</span></div>
-            </div>
-            <div class="resize-group">
-              <label>📏 اندازه خروجی</label>
-              <div class="size-options">
-                <label class="size-option"><input type="radio" name="resize-size" value="original" checked> حفظ اندازه اصلی</label>
-                <label class="size-option"><input type="radio" name="resize-size" value="1920"> 1920px (بزرگ)</label>
-                <label class="size-option"><input type="radio" name="resize-size" value="1280"> 1280px (متوسط)</label>
-                <label class="size-option"><input type="radio" name="resize-size" value="800"> 800px (کوچک)</label>
-              </div>
-            </div>
-            <div class="resize-group">
-              <label>📐 فرمت خروجی</label>
-              <div class="format-options">
-                <button class="format-btn active" data-format="jpeg">JPEG</button>
-                <button class="format-btn" data-format="png">PNG</button>
-                <button class="format-btn" data-format="webp">WEBP</button>
-              </div>
-            </div>
-            <div class="resize-group" id="resize-total-info" style="background:#e0f2fe;border:2px solid #93c5fd">
-              <label>📦 اطلاعات کلی</label>
-              <div style="display:flex;justify-content:space-between;margin-top:8px">
-                <div><span class="muted">حجم اصلی:</span> <strong id="total-original-size">-</strong></div>
-                <div><span class="muted">حجم جدید:</span> <strong id="total-new-size" style="color:#10b981">-</strong></div>
-                <div><span class="muted">کاهش:</span> <strong id="total-reduction" style="color:#059669">-</strong></div>
-              </div>
-            </div>
+            <div class="resize-group"><label>📊 کیفیت تصویر</label><input type="range" id="resize-quality" min="10" max="100" value="85"><div class="quality-display"><span id="quality-percent">85%</span><span class="muted" id="quality-estimate">حدود 500 کیلوبایت</span></div></div>
+            <div class="resize-group"><label>📏 اندازه خروجی</label><div class="size-options"><label class="size-option"><input type="radio" name="resize-size" value="original" checked> حفظ اندازه اصلی</label><label class="size-option"><input type="radio" name="resize-size" value="1920"> 1920px (بزرگ)</label><label class="size-option"><input type="radio" name="resize-size" value="1280"> 1280px (متوسط)</label><label class="size-option"><input type="radio" name="resize-size" value="800"> 800px (کوچک)</label></div></div>
+            <div class="resize-group"><label>📐 فرمت خروجی</label><div class="format-options"><button class="format-btn active" data-format="jpeg">JPEG</button><button class="format-btn" data-format="png">PNG</button><button class="format-btn" data-format="webp">WEBP</button></div></div>
+            <div class="resize-group" id="resize-total-info" style="background:#e0f2fe;border:2px solid #93c5fd"><label>📦 اطلاعات کلی</label><div style="display:flex;justify-content:space-between;margin-top:8px"><div><span class="muted">حجم اصلی:</span> <strong id="total-original-size">-</strong></div><div><span class="muted">حجم جدید:</span> <strong id="total-new-size" style="color:#10b981">-</strong></div><div><span class="muted">کاهش:</span> <strong id="total-reduction" style="color:#059669">-</strong></div></div></div>
           </div>
           <div class="resize-preview" id="resize-preview"></div>
-          <div class="resize-toolbar">
-            <button class="btn primary" id="btn-resize-all">⚡ فشرده‌سازی همه</button>
-            <button class="btn secondary" id="btn-clear-resize">🗑️ پاک کردن</button>
-          </div>
+          <div class="resize-toolbar"><button class="btn primary" id="btn-resize-all">⚡ فشرده‌سازی همه</button><button class="btn secondary" id="btn-clear-resize">🗑️ پاک کردن</button></div>
         </div>
       </div>
 
-      <!-- برش عکس -->
       <div class="card tab-content hidden" id="tab-crop">
         <h3>✂️ برش عکس</h3>
         <p class="muted">عکس‌های خود را برش بزنید و دانلود کنید</p>
@@ -1231,35 +1353,12 @@ function teacherPage() {
           <span class="muted">یک عکس برای برش انتخاب کنید</span>
         </div>
         <div id="crop-controls" class="hidden">
-          <div class="crop-area">
-            <div id="crop-wrapper">
-              <img id="crop-img" src="" alt="برش">
-              <div id="crop-box">
-                <div class="crop-handle crop-nw"></div><div class="crop-handle crop-n"></div><div class="crop-handle crop-ne"></div>
-                <div class="crop-handle crop-w"></div><div class="crop-handle crop-e"></div>
-                <div class="crop-handle crop-sw"></div><div class="crop-handle crop-s"></div><div class="crop-handle crop-se"></div>
-              </div>
-            </div>
-          </div>
-          <div class="crop-options">
-            <div class="crop-ratios">
-              <span>نسبت تصویر:</span>
-              <button class="ratio-btn active" data-ratio="free">آزاد</button>
-              <button class="ratio-btn" data-ratio="16:9">16:9</button>
-              <button class="ratio-btn" data-ratio="4:3">4:3</button>
-              <button class="ratio-btn" data-ratio="1:1">1:1</button>
-              <button class="ratio-btn" data-ratio="3:4">3:4</button>
-            </div>
-          </div>
-          <div class="crop-actions">
-            <button class="btn danger" id="btn-crop-delete">🗑️ حذف عکس</button>
-            <button class="btn secondary" id="btn-crop-reset">↩️ بازنشانی</button>
-            <button class="btn primary" id="btn-crop-download">💾 دانلود عکس</button>
-          </div>
+          <div class="crop-area"><div id="crop-wrapper"><img id="crop-img" src="" alt="برش"><div id="crop-box"><div class="crop-handle crop-nw"></div><div class="crop-handle crop-n"></div><div class="crop-handle crop-ne"></div><div class="crop-handle crop-w"></div><div class="crop-handle crop-e"></div><div class="crop-handle crop-sw"></div><div class="crop-handle crop-s"></div><div class="crop-handle crop-se"></div></div></div></div>
+          <div class="crop-options"><div class="crop-ratios"><span>نسبت تصویر:</span><button class="ratio-btn active" data-ratio="free">آزاد</button><button class="ratio-btn" data-ratio="16:9">16:9</button><button class="ratio-btn" data-ratio="4:3">4:3</button><button class="ratio-btn" data-ratio="1:1">1:1</button><button class="ratio-btn" data-ratio="3:4">3:4</button></div></div>
+          <div class="crop-actions"><button class="btn danger" id="btn-crop-delete">🗑️ حذف عکس</button><button class="btn secondary" id="btn-crop-reset">↩️ بازنشانی</button><button class="btn primary" id="btn-crop-download">💾 دانلود عکس</button></div>
         </div>
       </div>
 
-      <!-- PDF به عکس -->
       <div class="card tab-content hidden" id="tab-pdf2img">
         <h3>📄 تبدیل PDF به عکس</h3>
         <p class="muted">صفحات PDF را به تصاویر با کیفیت تبدیل کنید</p>
@@ -1277,47 +1376,15 @@ function teacherPage() {
             </div>
           </div>
           <div class="pdf-options" style="margin-bottom:16px">
-            <div class="pdf-option-group">
-              <label>انتخاب صفحات:</label>
-              <div class="pdf-page-select">
-                <button class="pdf-select-btn active" data-pages="all">همه صفحات</button>
-                <button class="pdf-select-btn" data-pages="odd">صفحات فرد</button>
-                <button class="pdf-select-btn" data-pages="even">صفحات زوج</button>
-                <button class="pdf-select-btn" data-pages="range">محدوده</button>
-              </div>
-              <input type="text" id="pdf-range" placeholder="مثال: 1,3,5-10" style="margin-top:8px" class="hidden">
-            </div>
-            <div class="pdf-option-group" style="margin-top:12px">
-              <label>DPI (کیفیت تصویر):</label>
-              <div class="pdf-dpi-select">
-                <button class="pdf-dpi-btn" data-dpi="72">72 DPI<small>پیش‌نمایش</small></button>
-                <button class="pdf-dpi-btn active" data-dpi="150">150 DPI<small>متوسط</small></button>
-                <button class="pdf-dpi-btn" data-dpi="300">300 DPI<small>بالا</small></button>
-              </div>
-            </div>
-            <div class="pdf-option-group" style="margin-top:12px">
-              <label>فرمت خروجی:</label>
-              <div class="pdf-format-select">
-                <button class="pdf-format-btn active" data-format="png">PNG</button>
-                <button class="pdf-format-btn" data-format="jpeg">JPEG</button>
-              </div>
-              <div id="jpeg-quality-group" class="hidden" style="margin-top:8px">
-                <label>کیفیت JPEG:</label>
-                <input type="range" id="jpeg-quality" min="50" max="100" value="85" style="width:150px">
-                <span id="jpeg-quality-val">85%</span>
-              </div>
-            </div>
+            <div class="pdf-option-group"><label>انتخاب صفحات:</label><div class="pdf-page-select"><button class="pdf-select-btn active" data-pages="all">همه صفحات</button><button class="pdf-select-btn" data-pages="odd">صفحات فرد</button><button class="pdf-select-btn" data-pages="even">صفحات زوج</button><button class="pdf-select-btn" data-pages="range">محدوده</button></div><input type="text" id="pdf-range" placeholder="مثال: 1,3,5-10" style="margin-top:8px" class="hidden"></div>
+            <div class="pdf-option-group" style="margin-top:12px"><label>DPI (کیفیت تصویر):</label><div class="pdf-dpi-select"><button class="pdf-dpi-btn" data-dpi="72">72 DPI<small>پیش‌نمایش</small></button><button class="pdf-dpi-btn active" data-dpi="150">150 DPI<small>متوسط</small></button><button class="pdf-dpi-btn" data-dpi="300">300 DPI<small>بالا</small></button></div></div>
+            <div class="pdf-option-group" style="margin-top:12px"><label>فرمت خروجی:</label><div class="pdf-format-select"><button class="pdf-format-btn active" data-format="png">PNG</button><button class="pdf-format-btn" data-format="jpeg">JPEG</button></div><div id="jpeg-quality-group" class="hidden" style="margin-top:8px"><label>کیفیت JPEG:</label><input type="range" id="jpeg-quality" min="50" max="100" value="85" style="width:150px"><span id="jpeg-quality-val">85%</span></div></div>
           </div>
           <div class="pdf-preview" id="pdf-preview" style="margin-bottom:16px"></div>
-          <div class="pdf-toolbar">
-            <button class="btn primary" id="btn-pdf-render-all">⚡ رندر همه صفحات</button>
-            <button class="btn secondary" id="btn-pdf-download-zip">📦 دانلود ZIP</button>
-            <button class="btn gray" id="btn-pdf-clear-previews">🗑️ پاک کردن پیش‌نمایش‌ها</button>
-          </div>
+          <div class="pdf-toolbar"><button class="btn primary" id="btn-pdf-render-all">⚡ رندر همه صفحات</button><button class="btn secondary" id="btn-pdf-download-zip">📦 دانلود ZIP</button><button class="btn gray" id="btn-pdf-clear-previews">🗑️ پاک کردن پیش‌نمایش‌ها</button></div>
         </div>
       </div>
 
-      <!-- ترجمه -->
       <div class="card tab-content hidden" id="tab-translate">
         <h3>🌐 ترجمه متن</h3>
         <p class="muted">متن را از فارسی به انگلیسی یا برعکس ترجمه کنید</p>
@@ -1345,32 +1412,18 @@ function teacherPage() {
         </div>
       </div>
 
-      <!-- هوش مصنوعی -->
       <div class="card tab-content hidden" id="tab-ai">
         <div class="ai-chat-container">
           <div class="ai-header">
             <div class="ai-avatar">🤖</div>
             <div class="ai-title"><h3>دستیار هوش مصنوعی</h3><span class="ai-status">آنلاین</span></div>
-            <div class="ai-mode-select">
-              <select id="ai-mode">
-                <option value="answer">💬 پاسخ به سوالات</option>
-                <option value="write">📝 نوشتن سوال</option>
-                <option value="correct">✏️ تصحیح متن</option>
-                <option value="translate">🌐 ترجمه</option>
-              </select>
-            </div>
+            <div class="ai-mode-select"><select id="ai-mode"><option value="answer">💬 پاسخ به سوالات</option><option value="write">📝 نوشتن سوال</option><option value="correct">✏️ تصحیح متن</option><option value="translate">🌐 ترجمه</option></select></div>
           </div>
           <div id="ai-messages" class="ai-messages">
-            <div class="ai-message ai">
-              <div class="ai-message-avatar">🤖</div>
-              <div class="ai-message-content"><div class="ai-message-text">سلام! 👋 من دستیار هوش مصنوعی شما هستم. چطور می‌توانم کمکتان کنم؟</div></div>
-            </div>
+            <div class="ai-message ai"><div class="ai-message-avatar">🤖</div><div class="ai-message-content"><div class="ai-message-text">سلام! 👋 من دستیار هوش مصنوعی شما هستم. چطور می‌توانم کمکتان کنم؟</div></div></div>
           </div>
           <div class="ai-typing hidden" id="ai-typing">
-            <div class="ai-message ai">
-              <div class="ai-message-avatar">🤖</div>
-              <div class="ai-message-content"><div class="ai-typing-dots"><span></span><span></span><span></span></div></div>
-            </div>
+            <div class="ai-message ai"><div class="ai-message-avatar">🤖</div><div class="ai-message-content"><div class="ai-typing-dots"><span></span><span></span><span></span></div></div></div>
           </div>
           <div class="ai-quick-actions">
             <button class="quick-action-btn" data-prompt="یک سوال تستی از درس ریاضی پایه هشتم بساز">📚 ساخت سوال</button>
@@ -1385,7 +1438,6 @@ function teacherPage() {
         </div>
       </div>
 
-      <!-- تنظیمات -->
       <div class="card tab-content hidden" id="tab-settings">
         <h3>🌙 تم</h3>
         <div style="display:flex;gap:12px;margin-bottom:20px">
@@ -1428,13 +1480,12 @@ function teacherScript() {
   function uid(){return 'q-'+Math.random().toString(36).slice(2,10);}
   async function api(path,opts){const r=await fetch(path,opts);return r.json();}
 
-  // ---- تم ----
   const savedTheme=localStorage.getItem('panelTheme')||'light';
   document.documentElement.setAttribute('data-theme',savedTheme);
   setTimeout(()=>{document.querySelectorAll('.theme-btn').forEach(b=>b.classList.toggle('active',b.dataset.theme===savedTheme));},100);
   window.setTheme=function(t){document.documentElement.setAttribute('data-theme',t);localStorage.setItem('panelTheme',t);document.querySelectorAll('.theme-btn').forEach(b=>b.classList.toggle('active',b.dataset.theme===t));};
 
-  // ---- ورود ----
+  // ===== ورود =====
   async function checkAuth(){
     const d=await api('/api/teacher/state');
     if(d.auth){showDash();return;}
@@ -1458,7 +1509,6 @@ function teacherScript() {
     loadStudents();loadQuestions();loadSchedule();
   }
 
-  // ---- تب‌ها ----
   document.querySelectorAll('.tab[data-tab]').forEach(t=>t.onclick=()=>{
     document.querySelectorAll('.tab[data-tab]').forEach(x=>x.classList.remove('active'));
     t.classList.add('active');
@@ -1467,9 +1517,10 @@ function teacherScript() {
     if(t.dataset.tab==='answers')loadAnswers();
     if(t.dataset.tab==='tables')renderTables();
     if(t.dataset.tab==='schedule'){document.getElementById('btn-gen-schedule').click();}
+    if(t.dataset.tab==='questions'){updateDurationDisplay();}
   });
 
-  // ---- دانش‌آموزان ----
+  // ===== دانش‌آموزان =====
   async function loadStudents(){
     const d=await api('/api/teacher/students');
     const box=document.getElementById('students-list');
@@ -1495,13 +1546,26 @@ function teacherScript() {
     document.getElementById('new-label').value='';loadStudents();toast('دانش‌آموز ساخته شد');
   };
 
-  // ---- سوالات ----
+  // ===== سوالات =====
   async function loadQuestions(){
     const d=await api('/api/teacher/questions');
-    META=d.meta||{};QUESTIONS=d.questions||[];
+    META=d.meta||{};
+    QUESTIONS=d.questions||[];
     document.getElementById('m-school').value=META.school||'';
+    document.getElementById('m-teacher').value=META.teacher||'';
+    document.getElementById('m-exam-name').value=META.examName||'';
+    document.getElementById('m-exam-duration').value=META.examDuration||'30';
+    updateDurationDisplay();
     renderQ();
   }
+  
+  function updateDurationDisplay(){
+    const duration = document.getElementById('m-exam-duration').value || '30';
+    document.getElementById('duration-display').textContent = duration;
+  }
+  
+  document.getElementById('m-exam-duration').addEventListener('input', updateDurationDisplay);
+  
   function renderQ(){
     const box=document.getElementById('q-list');
     box.innerHTML=QUESTIONS.map((q,i)=>qBlock(q,i)).join('')||'<p class="muted">سوالی اضافه نشده است.</p>';
@@ -1612,12 +1676,22 @@ function teacherScript() {
   });
   
   document.getElementById('btn-save-q').onclick=async()=>{
-    META={school:document.getElementById('m-school').value};
+    const duration = parseInt(document.getElementById('m-exam-duration').value);
+    if(isNaN(duration) || duration < 1){
+      toast('❌ مدت زمان باید حداقل ۱ دقیقه باشد');
+      return;
+    }
+    META={
+      school: document.getElementById('m-school').value,
+      teacher: document.getElementById('m-teacher').value,
+      examName: document.getElementById('m-exam-name').value,
+      examDuration: String(duration)
+    };
     const d=await api('/api/teacher/questions',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({questions:QUESTIONS,meta:META})});
-    if(d.ok)toast('ذخیره شد');else toast(d.error||'خطا');
+    if(d.ok){toast('سربرگ و سوالات ذخیره شد ✅');}else toast(d.error||'خطا');
   };
 
-  // ---- پاسخنامه‌ها ----
+  // ===== پاسخنامه‌ها =====
   function ansText(q,ans){
     if(q.type==='multiple'){const idx=parseInt(ans,10);return isNaN(idx)?'':(['الف','ب','ج','د'][idx]+') '+esc((q.options&&q.options[idx])||''));}
     if(q.type==='truefalse'){return ans==='true'?'صحیح':(ans==='false'?'غلط':'');}
@@ -1663,7 +1737,7 @@ function teacherScript() {
   };
   document.getElementById('btn-refresh-ans').onclick=loadAnswers;
 
-  // ---- برنامه هفتگی ----
+  // ===== برنامه هفتگی =====
   async function loadSchedule(){
     const r=await api('/api/teacher/schedule');
     if(r.ok && r.data){
@@ -1738,7 +1812,7 @@ function teacherScript() {
     if(r.ok)toast('برنامه هفتگی ذخیره شد ✅');else toast('خطا در ذخیره');
   };
 
-  // ---- جدول‌ساز ----
+  // ===== جدول‌ساز =====
   document.getElementById('btn-gen-table').onclick=function(){
     const rows=parseInt(document.getElementById('tbl-rows').value)||5;
     const cols=parseInt(document.getElementById('tbl-cols').value)||4;
@@ -1820,7 +1894,7 @@ function teacherScript() {
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=title+'.xls';a.click();
   };
 
-  // ---- اسکنر ----
+  // ===== اسکنر =====
   let SCANIMG=null, SCANORIG=null, scanRotation=0;
   const scanDropZone=document.getElementById('scan-drop-zone');
   const scanFileInput=document.getElementById('scan-file');
@@ -1890,7 +1964,7 @@ function teacherScript() {
   document.getElementById('btn-dl-img').onclick=()=>{if(!SCANORIG){toast('ابتدا عکس را انتخاب کنید');return;}const cv=document.getElementById('scan-canvas');cv.toBlob(blob=>{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='اسکن.png';document.body.appendChild(a);a.click();a.remove();},'image/png');};
   document.getElementById('btn-dl-pdf').onclick=()=>{if(!SCANORIG){toast('ابتدا عکس را انتخاب کنید');return;}if(!window.jspdf){toast('کتابخانه PDF در دسترس نیست');return;}const cv=document.getElementById('scan-canvas');const img=cv.toDataURL('image/jpeg',0.92);const jsPDF=window.jspdf.jsPDF;const pdf=new jsPDF({orientation:cv.width>=cv.height?'l':'p',unit:'pt',format:'a4'});const pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight();const m=24,aw=pw-2*m,ah=ph-2*m;let iw=cv.width,ih=cv.height;const ratio=Math.min(aw/iw,ah/ih);iw*=ratio;ih*=ratio;pdf.addImage(img,'JPEG',(pw-iw)/2,(ph-ih)/2,iw,ih);pdf.save('اسکن.pdf');toast('فایل PDF ساخته شد ✅');};
 
-  // ---- کاهش حجم ----
+  // ===== کاهش حجم =====
   const resizeDropZone=document.getElementById('resize-drop-zone');
   const resizeFileInput=document.getElementById('resize-file');
   resizeDropZone.onclick=()=>resizeFileInput.click();
@@ -1961,7 +2035,7 @@ function teacherScript() {
   };
   document.getElementById('btn-clear-resize').onclick=()=>{RESIZE_IMAGES=[];renderResizePreview();document.getElementById('resize-controls').classList.add('hidden');};
 
-  // ---- Crop ----
+  // ===== Crop =====
   let cropImg=null,cropFileName='',cropState={x:0,y:0,w:0,h:0,ratio:'free',dragging:false,resizing:false,handle:''};
   const cropDropZone=document.getElementById('crop-drop-zone');const cropFileInput=document.getElementById('crop-file');const cropControls=document.getElementById('crop-controls');
   cropDropZone.addEventListener('click',()=>cropFileInput.click());
@@ -1979,13 +2053,13 @@ function teacherScript() {
 
   function applyRatio(){if(cropState.ratio==='free')return;const [rw,rh]=cropState.ratio.split(':').map(Number);const ratio=rw/rh;const curRatio=cropState.w/cropState.h;if(curRatio>ratio){cropState.w=cropState.h*ratio;}else{cropState.h=cropState.w/ratio;}const wrapper=document.getElementById('crop-wrapper');const w=parseFloat(wrapper.style.width);const h=parseFloat(wrapper.style.height);cropState.x=Math.max(0,(w-cropState.w)/2);cropState.y=Math.max(0,(h-cropState.h)/2);updateCropBox();}
   function updateCropBox(){const box=document.getElementById('crop-box');box.style.left=cropState.x+'px';box.style.top=cropState.y+'px';box.style.width=cropState.w+'px';box.style.height=cropState.h+'px';}
-  document.getElementById('btn-crop-download').onclick=()=>{if(!cropImg){toast('عکسی انتخاب نشده');return;}const img=cropImg.el;const sx=cropState.x*(img.naturalWidth/parseFloat(img.style.width));const sy=cropState.y*(img.naturalHeight/parseFloat(img.style.height));const sw=cropState.w*(img.naturalWidth/parseFloat(img.style.width));const sh=cropState.h*(img.naturalHeight/parseFloat(img.style.height));const canvas=document.createElement('canvas');canvas.width=sw;canvas.height=sh;const ctx=canvas.getContext('2d');ctx.drawImage(img,sx,sy,sw,sh,0,0,sw,sh);const a=document.createElement('a');a.href=canvas.toDataURL('image/png');a.download=cropFileName.replace(/\.[^.]+$/,'_cropped.png');a.click();toast('عکس برش‌خورده دانلود شد ✅');};
+  document.getElementById('btn-crop-download').onclick=()=>{if(!cropImg){toast('عکسی انتخاب نشده');return;}const img=cropImg.el;const sx=cropState.x*(img.naturalWidth/parseFloat(img.style.width));const sy=cropState.y*(img.naturalHeight/parseFloat(img.style.height));const sw=cropState.w*(img.naturalWidth/parseFloat(img.style.width));const sh=cropState.h*(img.naturalHeight/parseFloat(img.style.height));const canvas=document.createElement('canvas');canvas.width=sw;canvas.height=sh;const ctx=canvas.getContext('2d');ctx.drawImage(img,sx,sy,sw,sh,0,0,sw,sh);const a=document.createElement('a');a.href=canvas.toDataURL('image/png');a.download=cropFileName.replace(/\\.[^.]+$/,'_cropped.png');a.click();toast('عکس برش‌خورده دانلود شد ✅');};
   const cropBox=document.getElementById('crop-box');
   cropBox.addEventListener('mousedown',e=>{if(e.target.classList.contains('crop-handle')){cropState.resizing=true;cropState.handle=e.target.className.replace('crop-handle crop-','');}else{cropState.dragging=true;}cropState.startX=e.clientX;cropState.startY=e.clientY;e.preventDefault();});
   document.addEventListener('mousemove',e=>{if(!cropState.dragging&&!cropState.resizing)return;const dx=e.clientX-cropState.startX;const dy=e.clientY-cropState.startY;cropState.startX=e.clientX;cropState.startY=e.clientY;const wrapper=document.getElementById('crop-wrapper');const w=parseFloat(wrapper.style.width);const h=parseFloat(wrapper.style.height);if(cropState.dragging){cropState.x=Math.max(0,Math.min(w-cropState.w,cropState.x+dx));cropState.y=Math.max(0,Math.min(h-cropState.h,cropState.y+dy));}else if(cropState.resizing){const rh=cropState.handle;if(rh.includes('e'))cropState.w=Math.max(50,Math.min(w-cropState.x,cropState.w+dx));if(rh.includes('w')){cropState.w=Math.max(50,cropState.w-dx);cropState.x+=dx;}if(rh.includes('s'))cropState.h=Math.max(50,Math.min(h-cropState.y,cropState.h+dy));if(rh.includes('n')){cropState.h=Math.max(50,cropState.h-dy);cropState.y+=dy;}if(cropState.ratio!=='free')applyRatio();}updateCropBox();});
   document.addEventListener('mouseup',()=>{cropState.dragging=false;cropState.resizing=false;});
 
-  // ---- PDF به عکس ----
+  // ===== PDF به عکس =====
   let pdfDoc=null,pdfFileName='',pdfRenderedPages=[];
   const pdfDropZone=document.getElementById('pdf-drop-zone');const pdfFileInput=document.getElementById('pdf-file');
   pdfDropZone.onclick=()=>pdfFileInput.click();
@@ -2008,14 +2082,14 @@ function teacherScript() {
   document.getElementById('btn-pdf-clear-previews').onclick=()=>{document.getElementById('pdf-preview').innerHTML='';pdfRenderedPages=[];};
   document.getElementById('btn-pdf-download-zip').onclick=async()=>{if(pdfRenderedPages.length===0){toast('ابتدا صفحات را رندر کنید');return;}toast('در حال ساخت ZIP...');const format=document.querySelector('.pdf-format-btn.active')?.dataset.format||'png';const ext=format==='jpeg'?'jpg':format;const mimeType='image/'+format;const blobs=pdfRenderedPages.map(rp=>{const dataUrl=rp.canvas.toDataURL(mimeType,format==='jpeg'?parseInt(document.getElementById('jpeg-quality')?.value||85)/100:undefined);const binary=atob(dataUrl.split(',')[1]);const array=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)array[i]=binary.charCodeAt(i);return {name:pdfFileName.replace('.pdf','_page_'+rp.pageNum+'.'+ext),data:array};});blobs.forEach((b,i)=>{setTimeout(()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([b.data],{type:mimeType}));a.download=b.name;a.click();},i*300);});toast('دانلود '+blobs.length+' فایل شروع شد ✅');};
 
-  // ---- ترجمه ----
+  // ===== ترجمه =====
   document.getElementById('tl-from').onchange=function(){const f=this.value;const t=document.getElementById('tl-to');if(f===t.value){t.value=f==='fa'?'en':'fa';}};
   window.tlSwap=function(){const f=document.getElementById('tl-from');const t=document.getElementById('tl-to');const tmp=f.value;f.value=t.value;t.value=tmp;const inp=document.getElementById('tl-input');const out=document.getElementById('tl-output');const t2=inp.value;inp.value=out.value;out.value=t2;};
   window.tlCopy=function(){const txt=document.getElementById('tl-output').value;if(!txt){toast('متنی وارد نشده');return;}navigator.clipboard.writeText(txt).then(()=>toast('کپی شد ✅'));};
   window.tlClear=function(){document.getElementById('tl-input').value='';document.getElementById('tl-output').value='';};
   document.getElementById('btn-translate').onclick=async function(){const text=document.getElementById('tl-input').value.trim();if(!text){toast('متنی وارد نشده');return;}const from=document.getElementById('tl-from').value;const to=document.getElementById('tl-to').value;const btn=this;btn.disabled=true;btn.textContent='⏳ در حال ترجمه...';try{const res=await fetch('https://api.mymemory.translated.net/get?q='+encodeURIComponent(text)+'&langpair='+from+'|'+to);const data=await res.json();if(data.responseStatus===200 && data.responseData){document.getElementById('tl-output').value=data.responseData.translatedText;toast('ترجمه شد ✅');}else{toast('خطا در ترجمه');}}catch(e){toast('خطا در اتصال');}btn.disabled=false;btn.textContent='🌐 ترجمه کن';};
 
-  // ---- AI Chat ----
+  // ===== AI Chat =====
   let aiMessages=[{role:'system',content:'تو یک دستیار هوشمند برای معلمان هستی. به زبان فارسی پاسخ بده.'}];
   document.querySelectorAll('.quick-action-btn').forEach(btn=>{btn.onclick=()=>{const prompt=btn.dataset.prompt;document.getElementById('ai-input').value=prompt;document.getElementById('btn-ai-send').click();};});
   const aiInput=document.getElementById('ai-input');
@@ -2026,7 +2100,7 @@ function teacherScript() {
   document.getElementById('btn-ai-send').onclick=async()=>{const text=aiInput.value.trim();if(!text)return;aiInput.value='';aiInput.style.height='auto';addAiMessage('user',text);aiMessages.push({role:'user',content:text});showTyping();const box=document.getElementById('ai-messages');try{const mode=document.getElementById('ai-mode').value;let systemPrompt='تو یک دستیار هوشمند برای معلمان هستی. به زبان فارسی پاسخ بده.';if(mode==='write')systemPrompt='تو یک معلم باتجربه هستی. سوالات تستی و تشریحی باکیفیت بساز.';if(mode==='correct')systemPrompt='تو یک معلم باتجربه هستی. متون را تصحیح کن و پیشنهاد بده.';if(mode==='translate')systemPrompt='تو یک مترجم حرفه‌ای هستی. ترجمه‌ها را طبیعی و روان انجام بده.';const msgs=[{role:'system',content:systemPrompt},...aiMessages.slice(-10)];const res=await fetch('/api/teacher/ai/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs})});const d=await res.json();hideTyping();if(d.error){addAiMessage('ai','❌ خطا: '+d.error);return;}addAiMessage('ai',d.content);aiMessages.push({role:'assistant',content:d.content});}catch(e){hideTyping();addAiMessage('ai','❌ خطا در اتصال: '+e.message);}};
   aiInput.onkeydown=e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();document.getElementById('btn-ai-send').click();} };
 
-  // ---- تغییر رمز عبور ----
+  // ===== تغییر رمز عبور =====
   document.getElementById('btn-change-pass').onclick=async()=>{
     const np=document.getElementById('new-pass').value;
     const msg=document.getElementById('pass-msg');
