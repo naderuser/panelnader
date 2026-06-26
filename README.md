@@ -1,5 +1,31 @@
-# 📱 پنل آموزشی جامع — نسخه اندروید
+# 📱 پنل آموزشی جامع
 **طراح: نادر اکشیک**
+
+---
+
+## 📦 محتوای پروژه
+
+این Repository شامل دو بخش است:
+
+### 1️⃣ اپلیکیشن اندروید (React Native/Expo)
+فایل‌های مربوط به اپلیکیشن موبایل:
+- `App.js` - نقطه شروع
+- `app.json` - تنظیمات Expo
+- `src/` - کدهای React Native
+
+### 2️⃣ Cloudflare Worker (Backend)
+فایل `worker.js` - بک‌اند کامل پنل شامل:
+- پنل معلم (ورود/خروج، تغییر رمز عبور)
+- مدیریت دانش‌آموزان با لینک اختصاصی
+- آزمون‌سازی با انواع سوال (تشریحی، چهارگزینه‌ای، صحیح/غلط، کوتاه‌پاسخ)
+- تایمر معکوس برای دانش‌آموز
+- تصحیح و بازخورد (دستی + خودکار)
+- برنامه هفتگی با خروجی Word/PDF
+- جدول‌ساز حرفه‌ای با خروجی اکسل RTL
+- اسکنر حرفه‌ای (مشابه CamScanner)
+- کاهش حجم عکس، برش عکس، تبدیل PDF به عکس
+- چت AI با Groq
+- ترجمه متن با MyMemory
 
 ---
 
@@ -67,14 +93,13 @@ npx eas init
 
 ## 📁 ساختار پروژه
 ```
-ExamApp2/
-├── App.js                          ← نقطه شروع
+panelnader/
+├── App.js                          ← نقطه شروع اپلیکیشن
 ├── app.json                        ← تنظیمات Expo
 ├── eas.json                        ← تنظیمات ساخت APK
 ├── package.json
-├── .github/
-│   └── workflows/
-│       └── build-apk.yml          ← GitHub Actions
+├── worker.js                      ← Cloudflare Worker ⚠️
+├── build-apk.yml                   ← GitHub Actions
 └── src/
     ├── utils/api.js                ← آدرس ورکر اینجاست ⚠️
     ├── context/AuthContext.js
@@ -89,6 +114,37 @@ ExamApp2/
             ├── SubmissionsTab.js
             ├── AiChatTab.js
             └── SettingsTab.js
+```
+
+---
+
+## ⚙️ راهنمای نصب Cloudflare Worker
+
+### مرحله ۱ — ساخت KV Namespace
+1. برو به **[dash.cloudflare.com](https://dash.cloudflare.com)**
+2. یه Worker بساز (یا از قبلی استفاده کن)
+3. یه **KV Namespace** بساز:
+   - Workers & Pages → KV → Create namespace
+   - یه نام بذار (مثلاً `exam-kv`)
+4. اسم namespace رو کپی کن
+
+### مرحله ۲ — اتصال KV به Worker
+1. در Worker settings:
+   - KV Namespaces → Bind variable
+   - Name: `EXAM_KV`
+   - Namespace ID: اونی که کپی کردی
+
+### مرحله ۳ — آپلود Worker
+```bash
+npm install -g wrangler
+wrangler login
+wrangler deploy
+```
+
+### مرحله ۴ — تنظیم AI (اختیاری)
+برای چت AI، متغیر `GROQ_API_KEY` رو در Worker secrets تنظیم کن:
+```bash
+wrangler secret put GROQ_API_KEY
 ```
 
 ---
