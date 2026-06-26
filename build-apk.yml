@@ -1,0 +1,37 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 دریافت کد
+        uses: actions/checkout@v4
+
+      - name: ⚙️ نصب Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: 📦 نصب پکیج‌ها
+        run: npm install
+
+      - name: 🔧 نصب EAS CLI
+        run: npm install -g eas-cli
+
+      - name: 🏗️ ساخت APK با EAS
+        run: eas build -p android --profile preview --non-interactive --local --output ./ExamApp.apk
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: 📤 آپلود APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ExamApp-APK
+          path: ./ExamApp.apk
+          retention-days: 30
