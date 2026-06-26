@@ -1,156 +1,126 @@
-# 📱 پنل آموزشی جامع
-**طراح: نادر اکشیک**
+# 📚 پنل آموزشی جامع
+
+یک پنل آموزشی کامل ساخته شده با Cloudflare Worker برای معلمان و دانش‌آموزان.
+
+> 🎨 طراح: **نادر اکشیک**
 
 ---
 
-## 📦 محتوای پروژه
+## ✨ امکانات
 
-این Repository شامل دو بخش است:
+### 👨‍🏫 پنل معلم
+- 🔐 ورود و خروج با رمز عبور امن
+- 🔄 تغییر رمز عبور
+- 🎨 تم روشن/تاریک
+- 📊 مدیریت دانش‌آموزان با لینک اختصاصی
 
-### 1️⃣ اپلیکیشن اندروید (React Native/Expo)
-فایل‌های مربوط به اپلیکیشن موبایل:
-- `App.js` - نقطه شروع
-- `app.json` - تنظیمات Expo
-- `src/` - کدهای React Native
+### 📝 آزمون‌ساز
+- انواع سوالات:
+  - 📖 تشریحی
+  - ❓ چهارگزینه‌ای
+  - ✓ صحیح / غلط
+  - ✏️ کوتاه‌پاسخ
+- سربرگ کامل آزمون:
+  - نام مدرسه
+  - نام آموزگار
+  - نام آزمون
+  - مدت زمان آزمون (به دقیقه)
+- ⏱️ تایمر معکوس برای دانش‌آموز
+- 📷 ویرایشگر غنی سوالات:
+  - علائم ریاضی
+  - کسر و تقسیم چکشی
+  - اشکال هندسی SVG
+  - آپلود عکس
 
-### 2️⃣ Cloudflare Worker (Backend)
-فایل `worker.js` - بک‌اند کامل پنل شامل:
-- پنل معلم (ورود/خروج، تغییر رمز عبور)
-- مدیریت دانش‌آموزان با لینک اختصاصی
-- آزمون‌سازی با انواع سوال (تشریحی، چهارگزینه‌ای، صحیح/غلط، کوتاه‌پاسخ)
-- تایمر معکوس برای دانش‌آموز
-- تصحیح و بازخورد (دستی + خودکار)
-- برنامه هفتگی با خروجی Word/PDF
-- جدول‌ساز حرفه‌ای با خروجی اکسل RTL
-- اسکنر حرفه‌ای (مشابه CamScanner)
-- کاهش حجم عکس، برش عکس، تبدیل PDF به عکس
-- چت AI با Groq
-- ترجمه متن با MyMemory
+### 📋 تصحیح و بازخورد
+- ✅ تصحیح دستی
+- 🤖 تصحیح خودکار (چهارگزینه‌ای)
+- 📄 پاسخنامه با وضعیت‌های مختلف
+
+### 📅 برنامه هفتگی
+- خروجی Word/PDF/چاپ
+- ذخیره در Cloudflare KV
+
+### 📊 جدول‌ساز حرفه‌ای
+- خروجی اکسل RTL
+- محاسبه میانگین
+
+### 🖼️ ابزارهای تصویری
+- 📱 اسکنر حرفه‌ای (مشابه CamScanner)
+- 🎨 فیلترهای متنوع
+- 📦 کاهش حجم عکس
+- ✂️ برش عکس با نسبت‌های مختلف
+- 📄 تبدیل PDF به عکس
+
+### 🤖 هوش مصنوعی
+- 💬 چت AI با Groq (حالت‌های مختلف)
+- 🌐 ترجمه متن با MyMemory
 
 ---
 
-## 🚀 راهنمای ساخت APK با GitHub Actions
+## 🛠️ نصب و راه‌اندازی
 
-### مرحله ۱ — ساخت حساب Expo
-1. برو به **[expo.dev](https://expo.dev)** و ثبت‌نام کن (رایگان)
-2. بعد از ورود، از منوی بالا روی **Access Tokens** برو:
-   `expo.dev → Account → Access Tokens → Create Token`
-3. یه نام بنویس (مثلاً `github-build`) و توکن رو کپی کن
+### پیش‌نیازها
+- حساب [Cloudflare](https://dash.cloudflare.com/)
+- Node.js v16 یا بالاتر
+- حساب Groq برای Chat AI
 
----
+### مراحل نصب
 
-### مرحله ۲ — آپلود پروژه روی GitHub
-1. یه **Repository جدید** در [github.com](https://github.com) بساز (Private یا Public)
-2. این پوشه رو آپلود کن:
-
+1. **کلون کردن پروژه:**
 ```bash
-cd ExamApp2
-git init
-git add .
-git commit -m "Initial commit"
-git remote add origin https://github.com/USERNAME/REPO_NAME.git
-git push -u origin main
+git clone https://github.com/naderuser/panelnader.git
+cd panelnader
 ```
 
----
+2. **ساخت Worker در Cloudflare:**
+   - به [Cloudflare Dashboard](https://dash.cloudflare.com/) بروید
+   - یک Worker جدید بسازید
+   - کد `worker.js` را کپی کنید
 
-### مرحله ۳ — تنظیم Secret در GitHub
-1. در ریپو خود برو به:
-   `Settings → Secrets and variables → Actions → New repository secret`
-2. اضافه کن:
-   - **Name:** `EXPO_TOKEN`
-   - **Value:** توکنی که از Expo گرفتی
+3. **تنظیم KV Namespace:**
+   - یک KV Namespace با نام `EXAM_KV` بسازید
+   - در Worker Settings آن را bind کنید
 
----
+4. **تنظیم متغیرهای محیطی:**
+   - `GROQ_API_KEY`: کلید API Groq
 
-### مرحله ۴ — تنظیم آدرس ورکر
-فایل `src/utils/api.js` را باز کن و این خط را پیدا کن:
-```js
-export const WORKER_URL = "https://YOUR_WORKER.workers.dev";
-```
-آدرس ورکر Cloudflare خود را بنویس.
-
----
-
-### مرحله ۵ — ثبت پروژه در Expo
+5. **راه‌اندازی محلی (اختیاری):**
 ```bash
-npm install -g eas-cli
-npx expo login
-npx eas init
+npx wrangler dev
 ```
-بعد `app.json` را با `projectId` جدید آپدیت کن و push کن.
-
----
-
-### مرحله ۶ — دریافت APK
-1. بعد از push کردن، برو به تب **Actions** در GitHub
-2. روی آخرین workflow کلیک کن
-3. صبر کن تا سبز بشه (~۱۰-۱۵ دقیقه)
-4. در قسمت **Artifacts** فایل `ExamApp-APK` را دانلود کن
-5. روی گوشی اندروید نصب کن ✅
 
 ---
 
 ## 📁 ساختار پروژه
+
 ```
 panelnader/
-├── App.js                          ← نقطه شروع اپلیکیشن
-├── app.json                        ← تنظیمات Expo
-├── eas.json                        ← تنظیمات ساخت APK
-├── package.json
-├── worker.js                      ← Cloudflare Worker ⚠️
-├── build-apk.yml                   ← GitHub Actions
-└── src/
-    ├── utils/api.js                ← آدرس ورکر اینجاست ⚠️
-    ├── context/AuthContext.js
-    └── screens/
-        ├── StudentLoginScreen.js
-        ├── StudentExamScreen.js
-        ├── TeacherLoginScreen.js
-        ├── TeacherDashboard.js
-        └── teacher/
-            ├── StudentsTab.js
-            ├── QuestionsTab.js
-            ├── SubmissionsTab.js
-            ├── AiChatTab.js
-            └── SettingsTab.js
+├── worker.js       # کد اصلی Worker
+├── README.md       # مستندات
+└── .gitignore      # فایل‌های نادیده گرفته شده
 ```
 
 ---
 
-## ⚙️ راهنمای نصب Cloudflare Worker
+## 🔐 امنیت
 
-### مرحله ۱ — ساخت KV Namespace
-1. برو به **[dash.cloudflare.com](https://dash.cloudflare.com)**
-2. یه Worker بساز (یا از قبلی استفاده کن)
-3. یه **KV Namespace** بساز:
-   - Workers & Pages → KV → Create namespace
-   - یه نام بذار (مثلاً `exam-kv`)
-4. اسم namespace رو کپی کن
-
-### مرحله ۲ — اتصال KV به Worker
-1. در Worker settings:
-   - KV Namespaces → Bind variable
-   - Name: `EXAM_KV`
-   - Namespace ID: اونی که کپی کردی
-
-### مرحله ۳ — آپلود Worker
-```bash
-npm install -g wrangler
-wrangler login
-wrangler deploy
-```
-
-### مرحله ۴ — تنظیم AI (اختیاری)
-برای چت AI، متغیر `GROQ_API_KEY` رو در Worker secrets تنظیم کن:
-```bash
-wrangler secret put GROQ_API_KEY
-```
+- رمزهای عبور با SHA-256 هش می‌شوند
+- ورودی‌ها sanitize می‌شوند
+- کوکی‌ها HttpOnly و SameSite هستند
 
 ---
 
-## ⚠️ نکته مهم — CORS
-در ورکر Cloudflare خود مطمئن شو این هدر وجود داره:
-```js
-headers: { "Access-Control-Allow-Origin": "*", ... }
-```
+## 📄 لایسنس
+
+این پروژه رایگان برای استفاده آموزشی است.
+
+---
+
+## 📬 ارتباط با ما
+
+- 🔗 [GitHub Repository](https://github.com/naderuser/panelnader)
+
+---
+
+> 💡 **نکته:** برای استفاده از تمام امکانات، حتماً متغیرهای محیطی را تنظیم کنید.
