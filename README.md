@@ -1,6 +1,10 @@
 # 📚 پنل آموزشی جامع
 
-یک پنل آموزشی کامل ساخته شده با Cloudflare Worker برای معلمان و دانش‌آموزان.
+[![GitHub stars](https://img.shields.io/github/stars/naderuser/panelnader?style=flat-square)](https://github.com/naderuser/panelnader/stargazers)
+[![License](https://img.shields.io/badge/License-Free%20for%20Educational%20Use-blue?style=flat-square)](LICENSE)
+[![Cloudflare](https://img.shields.io/badge/Cloudflare-Worker-orange?style=flat-square)](https://workers.cloudflare.com/)
+
+یک پنل آموزشی کامل ساخته شده با **Cloudflare Worker** برای معلمان و دانش‌آموزان.
 
 > 🎨 طراح: **نادر اکشیک**
 
