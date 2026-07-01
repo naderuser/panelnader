@@ -7,16 +7,19 @@
  *  - مدیریت دانش‌آموزان با لینک اختصاصی
  *  - آزمون‌سازی با انواع سوال (تشریحی، چهارگزینه‌ای، صحیح/غلط، کوتاه‌پاسخ)
  *  - سربرگ کامل آزمون (نام مدرسه، نام آموزگار، نام آزمون، مدت زمان آزمون به دقیقه)
+ *  - انتخاب مقطع تحصیلی (ابتدایی توصیفی / متوسطه اول و دوم نمره‌ای)
  *  - تایمر معکوس برای دانش‌آموز (Countdown Timer)
  *  - ویرایشگر غنی سوال (علائم ریاضی، کسر، تقسیم چکشی، اشکال هندسی SVG، عکس)
  *  - صفحه آزمون دانش‌آموز با سوال امنیتی و نمایش تایمر
- *  - تصحیح و بازخورد (دستی + خودکار برای چندگزینه‌ای)
+ *  - تصحیح و بازخورد:
+ *    * ابتدایی: توصیفی (خیلی خوب، خوب، قابل‌قبول، نیاز به تلاش)
+ *    * متوسطه اول و دوم: نمره‌ای (عددی با اعشار) - نمره کل از 20
  *  - پاسخنامه‌ها با وضعیت‌های مختلف
  *  - برنامه هفتگی با خروجی Word/PDF/چاپ و ذخیره در KV
  *  - جدول‌ساز حرفه‌ای با خروجی اکسل RTL و میانگین‌گیری
  *  - اسکنر حرفه‌ای (مشابه CamScanner) با فیلترهای متنوع
  *  - کاهش حجم عکس با کیفیت و فرمت‌های مختلف
- *  - برش عکس با نسبت‌های مختلف
+ *  - برش عکس با نسبت‌های مختلف (پشتیبانی از لمس برای گوشی)
  *  - تبدیل PDF به عکس با انتخاب صفحات و DPI
  *  - چت AI با Groq (حالت‌های مختلف)
  *  - ترجمه متن با MyMemory
@@ -30,7 +33,8 @@ const DEFAULT_META = {
   school: "",
   teacher: "",
   examName: "",
-  examDuration: "30", // مدت زمان به دقیقه
+  examDuration: "30",
+  gradeLevel: "elementary",
 };
 
 const QUESTION_TYPES = {
@@ -181,7 +185,15 @@ function getScheduleHtml(data) {
 }
 
 function safeQuestion(q) {
-  return { id: q.id, type: q.type, rich: Boolean(q.rich), text: q.text, options: q.options || [], image: q.image || "" };
+  return { 
+    id: q.id, 
+    type: q.type, 
+    rich: Boolean(q.rich), 
+    text: q.text, 
+    options: q.options || [], 
+    image: q.image || "",
+    weight: q.weight || 1
+  };
 }
 
 /* ------------------------- روتر اصلی ------------------------- */
@@ -257,7 +269,6 @@ async function handleApi(req, env, url, path) {
       const meta = await getMeta(env);
       const questions = await getQuestions(env);
       
-      // محاسبه زمان پایان آزمون (بر اساس مدت زمان)
       const durationMinutes = parseInt(meta.examDuration) || 30;
       const endTime = Date.now() + (durationMinutes * 60 * 1000);
       
@@ -290,7 +301,6 @@ async function handleApi(req, env, url, path) {
         const sub = JSON.parse(subRaw);
         const resultQuestions = (sub.questionsSnapshot || []).map(safeQuestion);
         
-        // محاسبه زمان باقیمانده
         const now = Date.now();
         const remaining = Math.max(0, Math.floor((sub.endTime - now) / 1000));
         const isExpired = remaining <= 0;
@@ -320,7 +330,7 @@ async function handleApi(req, env, url, path) {
         questions, 
         label: st.label || "", 
         timeCheck: true,
-        duration: durationMinutes * 60 // به ثانیه
+        duration: durationMinutes * 60
       });
     }
   }
@@ -329,7 +339,6 @@ async function handleApi(req, env, url, path) {
   if (path.startsWith("/api/teacher/")) {
     if (!(await isTeacher(req, env))) return json({ ok: false, error: "دسترسی غیرمجاز" }, 401);
 
-    // تغییر رمز عبور معلم
     if (path === "/api/teacher/password" && method === "POST") {
       const body = await req.json().catch(() => ({}));
       const np = String(body.newPassword || "");
@@ -339,7 +348,6 @@ async function handleApi(req, env, url, path) {
       return json({ ok: true }, 200, { "set-cookie": `t_auth=${hash}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400` });
     }
 
-    // برنامه هفتگی
     if (path === "/api/teacher/schedule" && method === "GET") {
       const raw = await env.EXAM_KV.get("schedule_data");
       return json({ ok: true, data: raw ? JSON.parse(raw) : null });
@@ -351,7 +359,6 @@ async function handleApi(req, env, url, path) {
       return json({ ok: true });
     }
 
-    // دانش‌آموزان
     if (path === "/api/teacher/students" && method === "GET") {
       const students = await listStudents(env);
       const withStatus = [];
@@ -382,7 +389,6 @@ async function handleApi(req, env, url, path) {
       return json({ ok: true });
     }
 
-    // سوالات و سربرگ
     if (path === "/api/teacher/questions" && method === "GET") {
       return json({ ok: true, meta: await getMeta(env), questions: await getQuestions(env) });
     }
@@ -400,6 +406,7 @@ async function handleApi(req, env, url, path) {
           options: Array.isArray(q.options) ? q.options.map((o) => String(o)) : [],
           correct: q.correct == null ? "" : q.correct,
           image: typeof q.image === "string" ? q.image : "",
+          weight: Math.min(20, Math.max(0.5, parseFloat(q.weight) || 1)),
           order: i,
         };
       });
@@ -411,7 +418,6 @@ async function handleApi(req, env, url, path) {
       return json({ ok: true });
     }
 
-    // پاسخنامه‌ها
     if (path === "/api/teacher/submissions" && method === "GET") {
       const students = await listStudents(env);
       const out = [];
@@ -427,7 +433,6 @@ async function handleApi(req, env, url, path) {
       return json({ ok: true, submissions: out });
     }
 
-    // ثبت تصحیح/بازخورد
     if (path === "/api/teacher/grade" && method === "POST") {
       const body = await req.json().catch(() => ({}));
       const id = body.uuid;
@@ -445,7 +450,6 @@ async function handleApi(req, env, url, path) {
       return json({ ok: true });
     }
 
-    // دانلود Word (برگه آزمون یا پاسخنامه)
     if (path === "/api/teacher/word" && method === "GET") {
       const type = url.searchParams.get("type") || "questions";
       const meta = await getMeta(env);
@@ -460,7 +464,6 @@ async function handleApi(req, env, url, path) {
       return wordResponse(examWord(meta, questions), "برگه-آزمون.doc");
     }
 
-    // AI Chat (Groq)
     if (path === "/api/teacher/ai/chat" && method === "POST") {
       const body = await req.json().catch(() => ({}));
       const messages = body.messages || [];
@@ -543,7 +546,7 @@ function wordHeader(meta, extra = "") {
 }
 
 function questionBodyWord(q) {
-  let inner = `<div><b>${q.rich ? q.text : esc(q.text)}</b></div>`;
+  let inner = `<div><b>${q.rich ? q.text : esc(q.text)}</b> <span style="font-size:11px;color:#666">(وزن: ${q.weight || 1})</span></div>`;
   if (q.image) inner += `<div><img src="${esc(q.image)}"></div>`;
   if (q.type === "multiple") {
     (q.options || []).forEach((o, oi) => {
@@ -607,7 +610,7 @@ function answerSheetWord(sub) {
     `<tr><td>نام درس: ${esc(st.courseName)}</td><td>تاریخ ثبت: ${esc(new Date(sub.submittedAt).toLocaleString("fa-IR"))}</td><td></td></tr>` +
     `</table>`;
 
-  body += `<table class="q"><tr><th class="qnum">ردیف</th><th>سوال</th><th>پاسخ دانش‌آموز</th><th>وضعیت</th><th>بازخورد معلم</th></tr>`;
+  body += `<table class="q"><tr><th class="qnum">ردیف</th><th>سوال</th><th>پاسخ دانش‌آموز</th><th>نمره</th><th>بازخورد معلم</th></tr>`;
   questions.forEach((q, i) => {
     const ans = sub.answers ? sub.answers[q.id] : "";
     const mark = g.marks ? g.marks[q.id] : "";
@@ -618,7 +621,7 @@ function answerSheetWord(sub) {
       `<tr><td class="qnum">${i + 1}</td>` +
       `<td>${qcell} <small>(${esc(QUESTION_TYPES[q.type] || q.type)})</small></td>` +
       `<td>${ans == null || ans === "" ? "<i>بدون پاسخ</i>" : answerLabel(q, ans)}</td>` +
-      `<td>${esc(MARK_LABEL[mark] || "")}</td>` +
+      `<td>${esc(mark)}</td>` +
       `<td>${esc(fb || "")}</td></tr>`;
   });
   body += `</table>`;
@@ -686,8 +689,40 @@ const SHARED_CSS = `
   [data-theme="dark"] .link-box{background:#1e293b}
   .pill{font-size:12px;padding:2px 8px;border-radius:999px}
   .pill.ok{background:#dcfce7;color:#166534}.pill.no{background:#fee2e2;color:#991b1b}.pill.gr{background:#dbeafe;color:#1e40af}
-  .mark.correct{color:#166534;font-weight:700}.mark.wrong{color:#991b1b;font-weight:700}.mark.partial{color:#92400e;font-weight:700}
-  a{color:var(--primary)}
+  
+  /* ===== استایل‌های نتیجه آزمون ===== */
+  .mark.correct{color:#166534;font-weight:700}
+  .mark.wrong{color:#991b1b;font-weight:700}
+  .mark.partial{color:#92400e;font-weight:700}
+  .mark.excellent{color:#166534;font-weight:700}
+  .mark.good{color:#2563eb;font-weight:700}
+  .mark.acceptable{color:#d97706;font-weight:700}
+  .mark.needs-improve{color:#dc2626;font-weight:700}
+  .mark.numeric{color:#7c3aed;font-weight:700;font-size:16px}
+  
+  .result-card{background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border:2px solid #93c5fd;border-radius:16px;padding:20px;margin-top:16px}
+  [data-theme="dark"] .result-card{background:linear-gradient(135deg,#1e293b,#1e3a5f);border-color:#3b82f6}
+  .result-card .total-score{font-size:22px;font-weight:700;color:#1e40af;text-align:center;padding:12px;background:#dbeafe;border-radius:12px;margin-bottom:16px}
+  [data-theme="dark"] .result-card .total-score{background:#1e3a5f;color:#60a5fa}
+  .result-table th{background:#3b82f6;color:#fff}
+  .result-table .status-badge{display:inline-block;padding:4px 12px;border-radius:999px;font-size:13px;font-weight:600}
+  .status-badge.correct{background:#dcfce7;color:#166534}
+  .status-badge.wrong{background:#fee2e2;color:#991b1b}
+  .status-badge.partial{background:#fef3c7;color:#92400e}
+  .status-badge.excellent{background:#dcfce7;color:#166534}
+  .status-badge.good{background:#dbeafe;color:#1e40af}
+  .status-badge.acceptable{background:#fef3c7;color:#d97706}
+  .status-badge.needs-improve{background:#fee2e2;color:#dc2626}
+  
+  .weight-input-box{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 12px;margin-top:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .weight-input-box label{margin:0;font-size:13px;font-weight:600;color:#166534}
+  .weight-input-box input{width:70px;padding:6px 8px;border:1px solid #bbf7d0;border-radius:6px;font-size:14px}
+  .weight-input-box .weight-hint{font-size:12px;color:#64748b}
+  .weight-total{background:#e0f2fe;border-radius:8px;padding:8px 16px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;font-size:14px}
+  .weight-total .total-value{font-weight:700;color:#1d4ed8;font-size:18px}
+  .weight-total .total-value.valid{color:#166534}
+  .weight-total .total-value.invalid{color:#dc2626}
+  
   .rich{min-height:90px;border:1px solid #cbd5e1;border-radius:10px;padding:11px 12px;background:#fff;font-size:15px;line-height:1.9}
   [data-theme="dark"] .rich{background:#1e293b;border-color:#475569;color:#e2e8f0}
   .rich:focus{outline:none;border-color:var(--primary-2);box-shadow:0 0 0 3px rgba(37,99,235,.15)}
@@ -754,20 +789,47 @@ const SHARED_CSS = `
   .resize-item .remove-btn{position:absolute;top:4px;left:4px;background:#fee2e2;color:#991b1b;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:14px}
   .resize-toolbar{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
   
-  /* ---- Crop ---- */
+  /* ===== Crop - با پشتیبانی از لمس برای گوشی ===== */
   .crop-area{background:#1e293b;border-radius:12px;padding:16px;margin:16px 0;display:flex;justify-content:center;overflow:hidden}
   #crop-wrapper{position:relative;display:inline-block;max-width:100%}
   #crop-img{max-width:100%;max-height:50vh;display:block}
   #crop-box{position:absolute;border:2px dashed #fff;box-shadow:0 0 0 9999px rgba(0,0,0,.5);cursor:move;top:0;left:0}
-  .crop-handle{position:absolute;width:12px;height:12px;background:#fff;border:2px solid #333;border-radius:50%}
-  .crop-nw{top:-6px;left:-6px;cursor:nw-resize}
-  .crop-n{top:-6px;left:50%;transform:translateX(-50%);cursor:n-resize}
-  .crop-ne{top:-6px;right:-6px;cursor:ne-resize}
-  .crop-w{top:50%;left:-6px;transform:translateY(-50%);cursor:w-resize}
-  .crop-e{top:50%;right:-6px;transform:translateY(-50%);cursor:e-resize}
-  .crop-sw{bottom:-6px;left:-6px;cursor:sw-resize}
-  .crop-s{bottom:-6px;left:50%;transform:translateX(-50%);cursor:s-resize}
-  .crop-se{bottom:-6px;right:-6px;cursor:se-resize}
+  
+  /* دسته‌های برش - بزرگ برای گوشی */
+  .crop-handle{
+    position:absolute;
+    width:20px;
+    height:20px;
+    background:#fff;
+    border:2.5px solid #1e293b;
+    border-radius:50%;
+    z-index:10;
+    touch-action:none;
+    box-shadow:0 2px 8px rgba(0,0,0,0.3);
+  }
+  .crop-handle:active{transform:scale(1.2);background:#e0f2fe}
+  .crop-nw{top:-8px;left:-8px;cursor:nw-resize}
+  .crop-n{top:-8px;left:50%;transform:translateX(-50%);cursor:n-resize}
+  .crop-ne{top:-8px;right:-8px;cursor:ne-resize}
+  .crop-w{top:50%;left:-8px;transform:translateY(-50%);cursor:w-resize}
+  .crop-e{top:50%;right:-8px;transform:translateY(-50%);cursor:e-resize}
+  .crop-sw{bottom:-8px;left:-8px;cursor:sw-resize}
+  .crop-s{bottom:-8px;left:50%;transform:translateX(-50%);cursor:s-resize}
+  .crop-se{bottom:-8px;right:-8px;cursor:se-resize}
+  
+  /* بزرگتر برای گوشی‌های کوچک */
+  @media (max-width:600px){
+    .crop-handle{width:28px;height:28px;border-width:3px}
+    .crop-nw{top:-12px;left:-12px}
+    .crop-n{top:-12px;left:50%;transform:translateX(-50%)}
+    .crop-ne{top:-12px;right:-12px}
+    .crop-w{top:50%;left:-12px;transform:translateY(-50%)}
+    .crop-e{top:50%;right:-12px;transform:translateY(-50%)}
+    .crop-sw{bottom:-12px;left:-12px}
+    .crop-s{bottom:-12px;left:50%;transform:translateX(-50%)}
+    .crop-se{bottom:-12px;right:-12px}
+  }
+  
   .crop-options{margin-bottom:12px}
   .crop-ratios{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .crop-ratios span{font-weight:600;font-size:14px}
@@ -901,7 +963,7 @@ async function studentPage(env, id) {
 
     <!-- مرحله ۱: اطلاعات و سوال امنیتی -->
     <div class="card hidden" id="step-info">
-      <h3>اطلاعات دانش‌آموز</h3>
+      <h3>📝 اطلاعات دانش‌آموز</h3>
       <div class="row">
         <div><label>نام و نام خانوادگی *</label><input id="f-name" autocomplete="off"></div>
         <div><label>نام پدر *</label><input id="f-father" autocomplete="off"></div>
@@ -913,7 +975,7 @@ async function studentPage(env, id) {
       </div>
       <label>سوال امنیتی: <span id="sec-q"></span> *</label><input id="f-sec" inputmode="numeric" autocomplete="off">
       <p class="muted" id="info-err" style="color:var(--danger)"></p>
-      <button class="btn" id="btn-enter">ورود به آزمون</button>
+      <button class="btn" id="btn-enter">🚀 ورود به آزمون</button>
     </div>
 
     <!-- مرحله ۲: سوالات با تایمر -->
@@ -922,9 +984,9 @@ async function studentPage(env, id) {
         <div class="timer-display" id="timer-display">00:00</div>
         <div class="timer-label">⏱️ زمان باقیمانده</div>
       </div>
-      <h3>سوالات آزمون</h3>
+      <h3>📝 سوالات آزمون</h3>
       <div id="questions"></div>
-      <button class="btn sec" id="btn-submit" style="margin-top:16px">ثبت نهایی پاسخنامه</button>
+      <button class="btn sec" id="btn-submit" style="margin-top:16px">✅ ثبت نهایی پاسخنامه</button>
     </div>
 
     <!-- مرحله ۳: نتیجه -->
@@ -971,18 +1033,15 @@ async function studentPage(env, id) {
           isTimerExpired = true;
           container.className = 'exam-timer danger';
           display.textContent = '00:00';
-          toast('⏰ زمان آزمون به پایان رسید!');
-          // غیرفعال کردن دکمه ثبت و ارسال خودکار
+          toast('⏰ زمان آزمون به پایان رسید! پاسخ‌ها به‌طور خودکار ثبت شدند.');
           document.getElementById('btn-submit').disabled = true;
           document.getElementById('btn-submit').textContent = '⏰ زمان تمام شد';
-          // ارسال خودکار پاسخنامه
           submitExam(true);
           return;
         }
         
         display.textContent = formatTime(remainingSeconds);
         
-        // تغییر رنگ بر اساس زمان باقیمانده
         if(remainingSeconds <= 60){
           container.className = 'exam-timer danger';
         } else if(remainingSeconds <= 300){
@@ -1028,25 +1087,140 @@ async function studentPage(env, id) {
       document.getElementById('step-exam').classList.add('hidden');
       const done=document.getElementById('step-done');
       done.classList.remove('hidden');
+      
       if(!res.grading || !res.grading.graded){
-        done.innerHTML='<h2>پاسخنامه شما ثبت شد ✅</h2><p class="muted">پاسخ‌های شما برای معلم ارسال شد. نتیجه پس از تصحیح معلم همین‌جا نمایش داده می‌شود.</p>';
+        done.innerHTML = \`
+          <div class="result-card">
+            <div style="text-align:center;font-size:48px;margin-bottom:12px">✅</div>
+            <h2 style="text-align:center;color:var(--primary)">پاسخنامه‌ی شما با موفقیت ثبت شد</h2>
+            <p class="muted" style="text-align:center">پاسخ‌های شما برای معلم ارسال شد. نتیجه‌ی آزمون پس از تصحیح توسط معلم، در این صفحه نمایش داده می‌شود.</p>
+          </div>
+        \`;
         return;
       }
+      
       const g=res.grading;
-      let rows=res.questions.map((q,i)=>{
-        const ans=res.answers[q.id];
-        const mark=g.marks[q.id]||'';
-        const fb=g.feedback[q.id]||'';
-        const mlabel={correct:'صحیح',wrong:'غلط',partial:'نیمه‌درست'}[mark]||'';
-        return '<tr><td>'+(i+1)+'</td><td>'+qHtml(q)+(q.image?'<br><img src="'+q.image+'" class="imgprev">':'')+'</td>'+
-          '<td>'+(ansText(q,ans)||'<i>بدون پاسخ</i>')+'</td>'+
-          '<td><span class="mark '+mark+'">'+mlabel+'</span></td>'+
-          '<td>'+esc(fb)+'</td></tr>';
+      const isNumeric = g.marks && Object.values(g.marks).some(v => !isNaN(parseFloat(v)));
+      
+      const statusIcons = {
+        excellent: '🌟',
+        good: '✅',
+        acceptable: '📌',
+        'needs-improve': '📖',
+        correct: '✅',
+        wrong: '❌',
+        partial: '⚠️'
+      };
+      
+      // تغییر: «عالی» به «خیلی خوب»
+      const statusLabels = {
+        excellent: 'خیلی خوب',
+        good: 'خوب',
+        acceptable: 'قابل‌قبول',
+        'needs-improve': 'نیاز به تلاش',
+        correct: 'صحیح',
+        wrong: 'غلط',
+        partial: 'نیمه‌درست'
+      };
+      
+      // محاسبه نمره کل از 20
+      let totalWeight = 0;
+      res.questions.forEach(q => {
+        totalWeight += (q.weight || 1);
+      });
+      
+      // اگر وزن‌ها جمعش 20 نشده، نرمالایز میکنیم
+      const totalWeightNormalized = totalWeight || 20;
+      
+      let rows = res.questions.map((q, i) => {
+        const ans = res.answers[q.id];
+        const mark = g.marks[q.id] || '';
+        const fb = g.feedback[q.id] || '';
+        const weight = q.weight || 1;
+        
+        let resultCell;
+        if(isNumeric){
+          const score = parseFloat(mark);
+          const scoreText = isNaN(score) ? '—' : score.toFixed(1);
+          // نمره از 20 بر اساس وزن سوال
+          const maxScore = (weight / totalWeightNormalized) * 20;
+          resultCell = \`
+            <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+              <span class="mark numeric">\${scoreText} از \${maxScore.toFixed(1)}</span>
+            </div>
+          \`;
+        } else {
+          const statusClass = mark || '';
+          const icon = statusIcons[mark] || '';
+          const label = statusLabels[mark] || mark || '—';
+          resultCell = \`<span class="status-badge \${statusClass}">\${icon} \${label}</span>\`;
+        }
+        
+        return \`<tr>
+          <td>\${i + 1}</td>
+          <td>\${qHtml(q)}\${q.image ? '<br><img src="'+q.image+'" class="imgprev">' : ''}</td>
+          <td>\${ansText(q, ans) || '<i>بدون پاسخ</i>'}</td>
+          <td>\${resultCell}</td>
+          <td>\${esc(fb) || '—'}</td>
+        </tr>\`;
       }).join('');
-      done.innerHTML='<h2>نتیجه آزمون</h2>'+
-        '<p class="muted">نام: '+esc(res.student.name)+' | نام درس: '+esc(res.student.courseName||'')+' | تاریخ: '+esc(res.student.examDate||'')+'</p>'+
-        '<table><tr><th>#</th><th>سوال</th><th>پاسخ شما</th><th>وضعیت</th><th>بازخورد معلم</th></tr>'+rows+'</table>'+
-        (g.overall?'<p style="margin-top:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px"><b>بازخورد کلی معلم:</b> '+esc(g.overall)+'</p>':'');
+      
+      let totalScore = '';
+      if(isNumeric){
+        let total = 0;
+        res.questions.forEach(q => {
+          const score = parseFloat(g.marks[q.id] || 0);
+          if (!isNaN(score)) total += score;
+        });
+        // نمره کل از 20
+        const finalScore = Math.min(20, Math.max(0, total));
+        const percent = Math.round((finalScore / 20) * 100);
+        let gradeIcon = '🌟';
+        if(percent >= 80) { gradeIcon = '🌟'; }
+        else if(percent >= 60) { gradeIcon = '✅'; }
+        else if(percent >= 40) { gradeIcon = '📌'; }
+        else { gradeIcon = '📖'; }
+        
+        totalScore = \`
+          <div class="total-score">
+            \${gradeIcon} <b>نمره کل: \${finalScore.toFixed(1)} از 20</b> 
+            <span style="font-size:14px;font-weight:400;color:var(--muted)">(\${percent}٪)</span>
+          </div>
+        \`;
+      }
+      
+      done.innerHTML = \`
+        <div class="result-card">
+          <h2 style="text-align:center;color:var(--primary);margin-bottom:8px">📝 نتیجه آزمون</h2>
+          \${totalScore}
+          <div style="display:flex;flex-wrap:wrap;gap:8px;padding:12px;background:var(--bg);border-radius:10px;margin-bottom:16px">
+            <span><b>👤 نام:</b> \${esc(res.student.name)}</span>
+            <span><b>📚 درس:</b> \${esc(res.student.courseName || '')}</span>
+            <span><b>📅 تاریخ:</b> \${esc(res.student.examDate || '')}</span>
+            <span><b>👨‍👦 نام پدر:</b> \${esc(res.student.fatherName || '')}</span>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="result-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>سوال</th>
+                  <th>پاسخ شما</th>
+                  <th>نمره</th>
+                  <th>بازخورد</th>
+                </tr>
+              </thead>
+              <tbody>\${rows}</tbody>
+            </table>
+          </div>
+          \${g.overall ? \`
+            <div style="margin-top:16px;padding:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px">
+              <b>💬 بازخورد کلی معلم:</b>
+              <p style="margin-top:8px;font-size:15px;line-height:1.8">\${esc(g.overall)}</p>
+            </div>
+          \` : ''}
+        </div>
+      \`;
     }
 
     function renderQuestions(){
@@ -1057,14 +1231,15 @@ async function studentPage(env, id) {
         if(q.type==='multiple'){
           body=(q.options||[]).map((o,oi)=>'<div class="opt-row"><label style="font-weight:400;margin:0"><input type="radio" name="q_'+q.id+'" value="'+oi+'" style="width:auto;margin-left:6px"> '+['الف','ب','ج','د'][oi]+') '+esc(o)+'</label></div>').join('');
         }else if(q.type==='truefalse'){
-          body='<div class="opt-row"><label style="font-weight:400;margin:0"><input type="radio" name="q_'+q.id+'" value="true" style="width:auto;margin-left:6px"> صحیح</label>&nbsp;&nbsp;<label style="font-weight:400;margin:0"><input type="radio" name="q_'+q.id+'" value="false" style="width:auto;margin-left:6px"> غلط</label></div>';
+          body='<div class="opt-row"><label style="font-weight:400;margin:0"><input type="radio" name="q_'+q.id+'" value="true" style="width:auto;margin-left:6px"> ✅ صحیح</label>&nbsp;&nbsp;<label style="font-weight:400;margin:0"><input type="radio" name="q_'+q.id+'" value="false" style="width:auto;margin-left:6px"> ❌ غلط</label></div>';
         }else if(q.type==='short'){
-          body='<input type="text" data-q="'+q.id+'" autocomplete="off">';
+          body='<input type="text" data-q="'+q.id+'" autocomplete="off" placeholder="پاسخ خود را وارد کنید...">';
         }else{
-          body='<textarea data-q="'+q.id+'"></textarea>';
+          body='<textarea data-q="'+q.id+'" placeholder="پاسخ خود را بنویسید..."></textarea>';
         }
         const img=q.image?'<img src="'+q.image+'" class="imgprev">':'';
-        return '<div class="q-block"><div class="qhead"><b>'+(i+1)+'. '+qHtml(q)+'</b><span class="badge">'+typeLabel(q.type)+'</span></div>'+img+body+'</div>';
+        const weightInfo = q.weight ? \`<span style="font-size:11px;color:#64748b;margin-right:8px">(وزن: \${q.weight})</span>\` : '';
+        return '<div class="q-block"><div class="qhead"><b>'+(i+1)+'. '+qHtml(q)+'</b><span class="badge">'+typeLabel(q.type)+weightInfo+'</span></div>'+img+body+'</div>';
       }).join('');
     }
 
@@ -1100,12 +1275,12 @@ async function studentPage(env, id) {
         }else{
           toast(d.error||'خطا در ثبت');
           btn.disabled=false;
-          btn.textContent='ثبت نهایی پاسخنامه';
+          btn.textContent='✅ ثبت نهایی پاسخنامه';
         }
       } catch(e) {
         toast('خطا در اتصال');
         btn.disabled=false;
-        btn.textContent='ثبت نهایی پاسخنامه';
+        btn.textContent='✅ ثبت نهایی پاسخنامه';
       }
     }
 
@@ -1125,7 +1300,6 @@ async function studentPage(env, id) {
       document.getElementById('step-exam').classList.remove('hidden');
       renderQuestions();
       
-      // شروع تایمر
       if(DATA.duration){
         startTimer(DATA.duration);
       }
@@ -1160,7 +1334,7 @@ function teacherPage() {
     ${pageHeader()}
 
     <div class="card" id="login">
-      <h3 id="login-head">ورود معلم</h3>
+      <h3 id="login-head">🔐 ورود معلم</h3>
       <p class="muted" id="login-hint"></p>
       <label>رمز عبور</label><input id="pass" type="password" autocomplete="current-password">
       <p class="muted" id="login-err" style="color:var(--danger)"></p>
@@ -1186,10 +1360,10 @@ function teacherPage() {
       </div>
 
       <div class="card tab-content" id="tab-students">
-        <h3>ساخت دانش‌آموز جدید</h3>
+        <h3>👨‍🎓 ساخت دانش‌آموز جدید</h3>
         <div class="row">
           <input id="new-label" placeholder="نام دانش‌آموز (اختیاری)">
-          <button class="btn" id="btn-add-student" style="flex:0 0 auto">+ ساخت لینک اختصاصی</button>
+          <button class="btn" id="btn-add-student" style="flex:0 0 auto">➕ ساخت لینک اختصاصی</button>
         </div>
         <p class="muted">برای هر دانش‌آموز یک UUID و لینک جداگانه ساخته می‌شود.</p>
         <div id="students-list"></div>
@@ -1203,6 +1377,16 @@ function teacherPage() {
         </div>
         <div class="row">
           <div><label>📝 نام آزمون</label><input id="m-exam-name" placeholder="نام آزمون"></div>
+          <div><label>🎓 مقطع تحصیلی</label>
+            <select id="m-grade-level">
+              <option value="elementary">ابتدایی (توصیفی)</option>
+              <option value="middle">متوسطه اول (نمره‌ای)</option>
+              <option value="high">متوسطه دوم (نمره‌ای)</option>
+            </select>
+            <span class="muted" style="font-size:12px">نوع ارزیابی: ابتدایی توصیفی، متوسطه نمره‌ای</span>
+          </div>
+        </div>
+        <div class="row">
           <div><label>⏱️ مدت زمان (دقیقه)</label>
             <input id="m-exam-duration" type="number" min="1" max="180" value="30">
             <span class="muted" style="font-size:12px">مدت زمان آزمون به دقیقه</span>
@@ -1213,13 +1397,13 @@ function teacherPage() {
           <span>مدت زمان: <span id="duration-display">30</span> دقیقه</span>
         </div>
         <hr style="border:none;border-top:1px solid var(--line);margin:14px 0">
-        <h3>سوالات</h3>
+        <h3>📋 سوالات</h3>
         <div id="q-list"></div>
         <div class="row" style="margin-top:12px">
-          <button class="btn gray sm" data-add="descriptive" style="flex:0 0 auto">+ تشریحی</button>
-          <button class="btn gray sm" data-add="multiple" style="flex:0 0 auto">+ چهارگزینه‌ای</button>
-          <button class="btn gray sm" data-add="truefalse" style="flex:0 0 auto">+ صحیح/غلط</button>
-          <button class="btn gray sm" data-add="short" style="flex:0 0 auto">+ کوتاه‌پاسخ</button>
+          <button class="btn gray sm" data-add="descriptive" style="flex:0 0 auto">➕ تشریحی</button>
+          <button class="btn gray sm" data-add="multiple" style="flex:0 0 auto">➕ چهارگزینه‌ای</button>
+          <button class="btn gray sm" data-add="truefalse" style="flex:0 0 auto">➕ صحیح/غلط</button>
+          <button class="btn gray sm" data-add="short" style="flex:0 0 auto">➕ کوتاه‌پاسخ</button>
         </div>
         <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn" id="btn-save-q">💾 ذخیره سربرگ و سوالات</button>
@@ -1228,8 +1412,18 @@ function teacherPage() {
       </div>
 
       <div class="card tab-content hidden" id="tab-answers">
-        <h3>تصحیح و پاسخنامه‌ها</h3>
-        <button class="btn gray sm" id="btn-refresh-ans">به‌روزرسانی</button>
+        <h3>✅ تصحیح و پاسخنامه‌ها</h3>
+        <div class="grading-type-selector" style="margin-bottom:16px;padding:12px;background:#f0f9ff;border-radius:8px;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="radio" name="grading-type" value="descriptive" checked style="width:auto">
+            <span>📝 تصحیح توصیفی (ابتدایی)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
+            <input type="radio" name="grading-type" value="numeric" style="width:auto">
+            <span>🔢 تصحیح نمره‌ای (متوسطه اول و دوم)</span>
+          </label>
+        </div>
+        <button class="btn gray sm" id="btn-refresh-ans">🔄 به‌روزرسانی</button>
         <div id="answers-list"></div>
       </div>
 
@@ -1345,7 +1539,7 @@ function teacherPage() {
 
       <div class="card tab-content hidden" id="tab-crop">
         <h3>✂️ برش عکس</h3>
-        <p class="muted">عکس‌های خود را برش بزنید و دانلود کنید</p>
+        <p class="muted">عکس‌های خود را برش بزنید و دانلود کنید (قابل استفاده در گوشی و کامپیوتر)</p>
         <div class="upload-zone" id="crop-drop-zone">
           <input type="file" accept="image/*" id="crop-file" class="hidden">
           <div class="upload-icon">🖼️</div>
@@ -1354,7 +1548,12 @@ function teacherPage() {
         </div>
         <div id="crop-controls" class="hidden">
           <div class="crop-area"><div id="crop-wrapper"><img id="crop-img" src="" alt="برش"><div id="crop-box"><div class="crop-handle crop-nw"></div><div class="crop-handle crop-n"></div><div class="crop-handle crop-ne"></div><div class="crop-handle crop-w"></div><div class="crop-handle crop-e"></div><div class="crop-handle crop-sw"></div><div class="crop-handle crop-s"></div><div class="crop-handle crop-se"></div></div></div></div>
-          <div class="crop-options"><div class="crop-ratios"><span>نسبت تصویر:</span><button class="ratio-btn active" data-ratio="free">آزاد</button><button class="ratio-btn" data-ratio="16:9">16:9</button><button class="ratio-btn" data-ratio="4:3">4:3</button><button class="ratio-btn" data-ratio="1:1">1:1</button><button class="ratio-btn" data-ratio="3:4">3:4</button></div></div>
+          <div class="crop-options">
+            <div class="crop-ratios">
+              <span>نسبت تصویر:</span>
+              <button class="ratio-btn active" data-ratio="free">آزاد</button>
+            </div>
+          </div>
           <div class="crop-actions"><button class="btn danger" id="btn-crop-delete">🗑️ حذف عکس</button><button class="btn secondary" id="btn-crop-reset">↩️ بازنشانی</button><button class="btn primary" id="btn-crop-download">💾 دانلود عکس</button></div>
         </div>
       </div>
@@ -1555,6 +1754,7 @@ function teacherScript() {
     document.getElementById('m-teacher').value=META.teacher||'';
     document.getElementById('m-exam-name').value=META.examName||'';
     document.getElementById('m-exam-duration').value=META.examDuration||'30';
+    document.getElementById('m-grade-level').value=META.gradeLevel||'elementary';
     updateDurationDisplay();
     renderQ();
   }
@@ -1566,10 +1766,38 @@ function teacherScript() {
   
   document.getElementById('m-exam-duration').addEventListener('input', updateDurationDisplay);
   
+  // ===== محاسبه جمع وزن‌ها =====
+  function calculateTotalWeight() {
+    let total = 0;
+    QUESTIONS.forEach(q => {
+      total += (parseFloat(q.weight) || 1);
+    });
+    return total;
+  }
+  
+  function updateWeightDisplay() {
+    const total = calculateTotalWeight();
+    const display = document.getElementById('weight-total-display');
+    if (!display) return;
+    if (Math.abs(total - 20) < 0.01) {
+      display.innerHTML = '✅ جمع وزن‌ها: <span class="total-value valid">' + total.toFixed(1) + '</span> از 20 (صحیح)';
+    } else {
+      display.innerHTML = '⚠️ جمع وزن‌ها: <span class="total-value invalid">' + total.toFixed(1) + '</span> از 20 (باید برابر 20 باشد)';
+    }
+  }
+  
   function renderQ(){
     const box=document.getElementById('q-list');
     box.innerHTML=QUESTIONS.map((q,i)=>qBlock(q,i)).join('')||'<p class="muted">سوالی اضافه نشده است.</p>';
+    
+    // نمایش جمع وزن‌ها
+    const totalDiv = document.createElement('div');
+    totalDiv.id = 'weight-total-display';
+    totalDiv.className = 'weight-total';
+    box.parentNode.insertBefore(totalDiv, box.nextSibling);
+    updateWeightDisplay();
   }
+  
   function escA(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
   function qHtml(q){return q.rich?(q.text||''):esc(q.text);}
   function symBar(i){
@@ -1609,12 +1837,37 @@ function teacherScript() {
         body+='<label>پاسخ نمونه (اختیاری)</label><input type="text" value="'+esc(q.correct||'')+'" oninput="upd('+i+',\\'correct\\',this.value)">';
       }
     }
+    
+    // ===== بخش وزن (ضریب) هر سوال =====
+    body += \`
+      <div class="weight-input-box">
+        <label>⚖️ وزن (ضریب) این سوال:</label>
+        <input type="number" id="weight_\${i}" value="\${q.weight || 1}" min="0.5" max="20" step="0.5" 
+               onchange="updWeight(\${i}, this.value)">
+        <span class="weight-hint">جمع وزن‌ها باید برابر 20 شود</span>
+      </div>
+    \`;
+    
     return '<div class="q-block"><div class="qhead"><b>سوال '+(i+1)+'</b>'+
       '<span><span class="badge">'+TYPES[q.type]+'</span> '+
       '<button class="btn sm gray" onclick="moveQ('+i+',-1)">▲</button> '+
       '<button class="btn sm gray" onclick="moveQ('+i+',1)">▼</button> '+
       '<button class="btn sm danger" onclick="delQ('+i+')">حذف</button></span></div>'+body+'</div>';
   }
+  
+  // ===== تابع جدید برای ذخیره وزن =====
+  window.updWeight = (i, val) => {
+    const weight = parseFloat(val);
+    if (!isNaN(weight) && weight > 0) {
+      QUESTIONS[i].weight = Math.min(20, Math.max(0.5, weight));
+    } else {
+      QUESTIONS[i].weight = 1;
+      const el = document.getElementById('weight_'+i);
+      if(el) el.value = 1;
+    }
+    updateWeightDisplay();
+  };
+  
   window.upd=(i,k,v)=>{QUESTIONS[i][k]=v;};
   window.updOpt=(i,oi,v)=>{QUESTIONS[i].options=QUESTIONS[i].options||['','','',''];QUESTIONS[i].options[oi]=v;};
   window.delQ=(i)=>{QUESTIONS.splice(i,1);renderQ();};
@@ -1671,7 +1924,16 @@ function teacherScript() {
   
   document.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{
     const t=b.dataset.add;
-    QUESTIONS.push({id:uid(),type:t,rich:t==='descriptive',text:'',options:t==='multiple'?['','','','']:[],correct:t==='multiple'?'0':(t==='truefalse'?'true':''),image:''});
+    QUESTIONS.push({
+      id: uid(),
+      type: t,
+      rich: t==='descriptive',
+      text: '',
+      options: t==='multiple' ? ['','','',''] : [],
+      correct: t==='multiple' ? '0' : (t==='truefalse' ? 'true' : ''),
+      image: '',
+      weight: 1
+    });
     renderQ();
   });
   
@@ -1681,11 +1943,21 @@ function teacherScript() {
       toast('❌ مدت زمان باید حداقل ۱ دقیقه باشد');
       return;
     }
+    
+    // بررسی جمع وزن‌ها
+    const totalWeight = calculateTotalWeight();
+    if (Math.abs(totalWeight - 20) > 0.01) {
+      if (!confirm('⚠️ جمع وزن‌های سوالات ' + totalWeight.toFixed(1) + ' است (باید 20 باشد). آیا مطمئن هستید؟')) {
+        return;
+      }
+    }
+    
     META={
       school: document.getElementById('m-school').value,
       teacher: document.getElementById('m-teacher').value,
       examName: document.getElementById('m-exam-name').value,
-      examDuration: String(duration)
+      examDuration: String(duration),
+      gradeLevel: document.getElementById('m-grade-level').value
     };
     const d=await api('/api/teacher/questions',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({questions:QUESTIONS,meta:META})});
     if(d.ok){toast('سربرگ و سوالات ذخیره شد ✅');}else toast(d.error||'خطا');
@@ -1697,6 +1969,16 @@ function teacherScript() {
     if(q.type==='truefalse'){return ans==='true'?'صحیح':(ans==='false'?'غلط':'');}
     return esc(ans);
   }
+  
+  let GRADING_TYPE = 'descriptive';
+  
+  document.querySelectorAll('input[name="grading-type"]').forEach(radio => {
+    radio.onchange = function() {
+      GRADING_TYPE = this.value;
+      loadAnswers();
+    };
+  });
+  
   async function loadAnswers(){
     const d=await api('/api/teacher/submissions');
     SUBS=d.submissions||[];
@@ -1704,22 +1986,40 @@ function teacherScript() {
     if(!SUBS.length){box.innerHTML='<p class="muted">هنوز پاسخنامه‌ای ثبت نشده است.</p>';return;}
     box.innerHTML=SUBS.map((s,si)=>{
       const g=s.grading||{graded:false,feedback:{},marks:{},overall:''};
+      const isNumeric = GRADING_TYPE === 'numeric';
       const rows=(s.questionsSnapshot||[]).map((q,i)=>{
         const ans=s.answers?s.answers[q.id]:'';
         const fb=(g.feedback&&g.feedback[q.id])||'';
         const mk=(g.marks&&g.marks[q.id])||'';
-        const opt=(v,t)=>'<option value="'+v+'" '+(mk===v?'selected':'')+'>'+t+'</option>';
+        const weight = q.weight || 1;
+        
+        let gradeCell;
+        if(isNumeric){
+          // محاسبه حداکثر نمره برای این سوال (بر اساس وزن)
+          const totalWeight = s.questionsSnapshot.reduce((sum, qq) => sum + (qq.weight || 1), 0) || 20;
+          const maxScore = (weight / totalWeight) * 20;
+          gradeCell='<input type="number" id="mk_'+s.uuid+'_'+q.id+'" value="'+esc(mk)+'" placeholder="نمره" min="0" max="'+maxScore.toFixed(1)+'" step="0.5" style="width:80px;padding:6px;border:1px solid #ddd;border-radius:4px">'+
+            '<span style="font-size:11px;color:#64748b;margin-right:4px">از '+maxScore.toFixed(1)+'</span>';
+        } else {
+          const opt=(v,t)=>'<option value="'+v+'" '+(mk===v?'selected':'')+'>'+t+'</option>';
+          gradeCell='<select id="mk_'+s.uuid+'_'+q.id+'"><option value="">—</option>'+opt('excellent','🌟 خیلی خوب')+opt('good','✅ خوب')+opt('acceptable','📌 قابل‌قبول')+opt('needs-improve','📖 نیاز به تلاش')+'</select>';
+        }
+        
         return '<tr><td>'+(i+1)+'</td><td>'+qHtml(q)+(q.image?'<br><img src="'+q.image+'" class="imgprev">':'')+'</td>'+
           '<td>'+(ansText(q,ans)||'<i>بدون پاسخ</i>')+'</td>'+
-          '<td><select id="mk_'+s.uuid+'_'+q.id+'"><option value="">—</option>'+opt('correct','صحیح')+opt('wrong','غلط')+opt('partial','نیمه‌درست')+'</select></td>'+
+          '<td>'+gradeCell+'</td>'+
           '<td><input type="text" id="fb_'+s.uuid+'_'+q.id+'" value="'+esc(fb)+'" placeholder="بازخورد"></td></tr>';
       }).join('');
-      const badge=g.graded?'<span class="pill ok">تصحیح‌شده</span>':'<span class="pill gr">در انتظار تصحیح</span>';
+      const badge=g.graded?'<span class="pill ok">✅ تصحیح‌شده</span>':'<span class="pill gr">⏳ در انتظار تصحیح</span>';
+      
+      const statusHeader = isNumeric ? 'نمره' : 'وضعیت';
+      const feedbackLabel = isNumeric ? 'توضیحات (اختیاری)' : 'بازخورد';
+      
       return '<div class="q-block"><div class="qhead"><b>'+esc(s.student.name)+'</b> '+badge+
-        ' <a class="btn sm sec" href="/api/teacher/word?type=answers&uuid='+s.uuid+'">دانلود Word</a></div>'+
+        ' <a class="btn sm sec" href="/api/teacher/word?type=answers&uuid='+s.uuid+'">📄 دانلود Word</a></div>'+
         '<p class="muted">نام پدر: '+esc(s.student.fatherName)+' | کد ملی: '+esc(s.student.nationalId)+' | نام درس: '+esc(s.student.courseName||'')+' | تاریخ آزمون: '+esc(s.student.examDate||'')+' | ثبت: '+new Date(s.submittedAt).toLocaleString('fa-IR')+'</p>'+
-        '<table><tr><th>#</th><th>سوال</th><th>پاسخ دانش‌آموز</th><th>وضعیت</th><th>بازخورد</th></tr>'+rows+'</table>'+
-        '<label>بازخورد کلی</label><textarea id="ov_'+s.uuid+'">'+esc(g.overall||'')+'</textarea>'+
+        '<table><tr><th>#</th><th>سوال</th><th>پاسخ دانش‌آموز</th><th>'+statusHeader+'</th><th>'+feedbackLabel+'</th></tr>'+rows+'</table>'+
+        '<label>'+feedbackLabel+' کلی</label><textarea id="ov_'+s.uuid+'">'+esc(g.overall||'')+'</textarea>'+
         '<button class="btn" style="margin-top:8px" onclick="saveGrade(\\''+s.uuid+'\\')">ثبت تصحیح</button></div>';
     }).join('');
   }
@@ -1733,7 +2033,7 @@ function teacherScript() {
     });
     const overall=document.getElementById('ov_'+uuid).value;
     const d=await api('/api/teacher/grade',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({uuid,feedback,marks,overall})});
-    if(d.ok){toast('تصحیح ثبت شد');loadAnswers();}else toast(d.error||'خطا');
+    if(d.ok){toast('تصحیح ثبت شد ✅');loadAnswers();}else toast(d.error||'خطا');
   };
   document.getElementById('btn-refresh-ans').onclick=loadAnswers;
 
@@ -2035,29 +2335,273 @@ function teacherScript() {
   };
   document.getElementById('btn-clear-resize').onclick=()=>{RESIZE_IMAGES=[];renderResizePreview();document.getElementById('resize-controls').classList.add('hidden');};
 
-  // ===== Crop =====
-  let cropImg=null,cropFileName='',cropState={x:0,y:0,w:0,h:0,ratio:'free',dragging:false,resizing:false,handle:''};
-  const cropDropZone=document.getElementById('crop-drop-zone');const cropFileInput=document.getElementById('crop-file');const cropControls=document.getElementById('crop-controls');
-  cropDropZone.addEventListener('click',()=>cropFileInput.click());
-  cropDropZone.addEventListener('dragover',e=>{e.preventDefault();cropDropZone.style.borderColor='var(--primary)';});
-  cropDropZone.addEventListener('dragleave',()=>cropDropZone.style.borderColor='');
-  cropDropZone.addEventListener('drop',e=>{e.preventDefault();cropDropZone.style.borderColor='';if(e.dataTransfer.files[0])loadCropImg(e.dataTransfer.files[0]);});
-  cropFileInput.addEventListener('change',function(){if(this.files[0])loadCropImg(this.files[0]);});
+  // ===== Crop (اصلاح‌شده با پشتیبانی از لمس برای گوشی) =====
+  let cropImg = null,
+    cropFileName = '',
+    cropState = {
+      x: 0,
+      y: 0,
+      w: 0,
+      h: 0,
+      ratio: 'free',
+      dragging: false,
+      resizing: false,
+      handle: '',
+      startX: 0,
+      startY: 0
+    };
 
-  function loadCropImg(file){if(!file.type.startsWith('image/')){toast('فقط عکس مجاز است');return;}cropFileName=file.name;const rd=new FileReader();rd.onload=ev=>{const img=document.getElementById('crop-img');img.onload=()=>{const maxW=Math.min(img.naturalWidth,800);const scale=maxW/img.naturalWidth;img.style.width=maxW+'px';img.style.height=(img.naturalHeight*scale)+'px';document.getElementById('crop-wrapper').style.width=maxW+'px';document.getElementById('crop-wrapper').style.height=(img.naturalHeight*scale)+'px';cropImg={el:img,natW:img.naturalWidth,natH:img.naturalHeight};initCropBox();};img.src=ev.target.result;cropControls.classList.remove('hidden');cropDropZone.classList.add('hidden');};rd.readAsDataURL(file);}
+  const cropDropZone = document.getElementById('crop-drop-zone');
+  const cropFileInput = document.getElementById('crop-file');
+  const cropControls = document.getElementById('crop-controls');
 
-  function initCropBox(){const img=document.getElementById('crop-img');const w=parseFloat(img.style.width);const h=parseFloat(img.style.height);const box=document.getElementById('crop-box');cropState.x=w*0.1;cropState.y=h*0.1;cropState.w=w*0.8;cropState.h=h*0.8;cropState.ratio='free';box.style.left=cropState.x+'px';box.style.top=cropState.y+'px';box.style.width=cropState.w+'px';box.style.height=cropState.h+'px';}
-  document.getElementById('btn-crop-delete').onclick=()=>{cropImg=null;cropFileName='';cropControls.classList.add('hidden');cropDropZone.classList.remove('hidden');document.getElementById('crop-img').src='';};
-  document.getElementById('btn-crop-reset').onclick=()=>initCropBox();
-  document.querySelectorAll('.ratio-btn').forEach(btn=>{btn.onclick=()=>{document.querySelectorAll('.ratio-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');cropState.ratio=btn.dataset.ratio;applyRatio();};});
+  cropDropZone.addEventListener('click', () => cropFileInput.click());
+  cropDropZone.addEventListener('dragover', e => { e.preventDefault();
+    cropDropZone.style.borderColor = 'var(--primary)'; });
+  cropDropZone.addEventListener('dragleave', () => { cropDropZone.style.borderColor = ''; });
+  cropDropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    cropDropZone.style.borderColor = '';
+    if (e.dataTransfer.files[0]) loadCropImg(e.dataTransfer.files[0]);
+  });
+  cropFileInput.addEventListener('change', function() {
+    if (this.files[0]) loadCropImg(this.files[0]);
+  });
 
-  function applyRatio(){if(cropState.ratio==='free')return;const [rw,rh]=cropState.ratio.split(':').map(Number);const ratio=rw/rh;const curRatio=cropState.w/cropState.h;if(curRatio>ratio){cropState.w=cropState.h*ratio;}else{cropState.h=cropState.w/ratio;}const wrapper=document.getElementById('crop-wrapper');const w=parseFloat(wrapper.style.width);const h=parseFloat(wrapper.style.height);cropState.x=Math.max(0,(w-cropState.w)/2);cropState.y=Math.max(0,(h-cropState.h)/2);updateCropBox();}
-  function updateCropBox(){const box=document.getElementById('crop-box');box.style.left=cropState.x+'px';box.style.top=cropState.y+'px';box.style.width=cropState.w+'px';box.style.height=cropState.h+'px';}
-  document.getElementById('btn-crop-download').onclick=()=>{if(!cropImg){toast('عکسی انتخاب نشده');return;}const img=cropImg.el;const sx=cropState.x*(img.naturalWidth/parseFloat(img.style.width));const sy=cropState.y*(img.naturalHeight/parseFloat(img.style.height));const sw=cropState.w*(img.naturalWidth/parseFloat(img.style.width));const sh=cropState.h*(img.naturalHeight/parseFloat(img.style.height));const canvas=document.createElement('canvas');canvas.width=sw;canvas.height=sh;const ctx=canvas.getContext('2d');ctx.drawImage(img,sx,sy,sw,sh,0,0,sw,sh);const a=document.createElement('a');a.href=canvas.toDataURL('image/png');a.download=cropFileName.replace(/\\.[^.]+$/,'_cropped.png');a.click();toast('عکس برش‌خورده دانلود شد ✅');};
-  const cropBox=document.getElementById('crop-box');
-  cropBox.addEventListener('mousedown',e=>{if(e.target.classList.contains('crop-handle')){cropState.resizing=true;cropState.handle=e.target.className.replace('crop-handle crop-','');}else{cropState.dragging=true;}cropState.startX=e.clientX;cropState.startY=e.clientY;e.preventDefault();});
-  document.addEventListener('mousemove',e=>{if(!cropState.dragging&&!cropState.resizing)return;const dx=e.clientX-cropState.startX;const dy=e.clientY-cropState.startY;cropState.startX=e.clientX;cropState.startY=e.clientY;const wrapper=document.getElementById('crop-wrapper');const w=parseFloat(wrapper.style.width);const h=parseFloat(wrapper.style.height);if(cropState.dragging){cropState.x=Math.max(0,Math.min(w-cropState.w,cropState.x+dx));cropState.y=Math.max(0,Math.min(h-cropState.h,cropState.y+dy));}else if(cropState.resizing){const rh=cropState.handle;if(rh.includes('e'))cropState.w=Math.max(50,Math.min(w-cropState.x,cropState.w+dx));if(rh.includes('w')){cropState.w=Math.max(50,cropState.w-dx);cropState.x+=dx;}if(rh.includes('s'))cropState.h=Math.max(50,Math.min(h-cropState.y,cropState.h+dy));if(rh.includes('n')){cropState.h=Math.max(50,cropState.h-dy);cropState.y+=dy;}if(cropState.ratio!=='free')applyRatio();}updateCropBox();});
-  document.addEventListener('mouseup',()=>{cropState.dragging=false;cropState.resizing=false;});
+  function loadCropImg(file) {
+    if (!file.type.startsWith('image/')) { toast('فقط عکس مجاز است'); return; }
+    cropFileName = file.name;
+    const rd = new FileReader();
+    rd.onload = ev => {
+      const img = document.getElementById('crop-img');
+      img.onload = () => {
+        // نمایش عکس با اندازه اصلی - برای گوشی هم مناسب باشد
+        const maxWidth = window.innerWidth - 80;
+        let displayWidth = img.naturalWidth;
+        let displayHeight = img.naturalHeight;
+        
+        // اگر عکس از عرض صفحه بزرگتر بود، کوچک کن ولی نسبت حفظ بشه
+        if (displayWidth > maxWidth) {
+          displayHeight = (displayHeight * maxWidth) / displayWidth;
+          displayWidth = maxWidth;
+        }
+        
+        img.style.width = displayWidth + 'px';
+        img.style.height = displayHeight + 'px';
+        const wrapper = document.getElementById('crop-wrapper');
+        wrapper.style.width = displayWidth + 'px';
+        wrapper.style.height = displayHeight + 'px';
+        cropImg = { el: img, natW: img.naturalWidth, natH: img.naturalHeight };
+        initCropBox();
+      };
+      img.src = ev.target.result;
+      cropControls.classList.remove('hidden');
+      cropDropZone.classList.add('hidden');
+    };
+    rd.readAsDataURL(file);
+  }
+
+  function initCropBox() {
+    const img = document.getElementById('crop-img');
+    const w = parseFloat(img.style.width);
+    const h = parseFloat(img.style.height);
+    const box = document.getElementById('crop-box');
+    cropState.x = 0;
+    cropState.y = 0;
+    cropState.w = w;
+    cropState.h = h;
+    cropState.ratio = 'free';
+    box.style.left = cropState.x + 'px';
+    box.style.top = cropState.y + 'px';
+    box.style.width = cropState.w + 'px';
+    box.style.height = cropState.h + 'px';
+  }
+
+  document.getElementById('btn-crop-delete').onclick = () => {
+    cropImg = null;
+    cropFileName = '';
+    cropControls.classList.add('hidden');
+    cropDropZone.classList.remove('hidden');
+    document.getElementById('crop-img').src = '';
+  };
+  document.getElementById('btn-crop-reset').onclick = () => initCropBox();
+
+  function applyRatio() {
+    // فقط حالت آزاد - بدون تغییر نسبت
+    return;
+  }
+
+  document.querySelectorAll('.ratio-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.ratio-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      cropState.ratio = btn.dataset.ratio;
+      applyRatio();
+    };
+  });
+
+  function updateCropBox() {
+    const box = document.getElementById('crop-box');
+    box.style.left = cropState.x + 'px';
+    box.style.top = cropState.y + 'px';
+    box.style.width = cropState.w + 'px';
+    box.style.height = cropState.h + 'px';
+  }
+
+  document.getElementById('btn-crop-download').onclick = () => {
+    if (!cropImg) { toast('عکسی انتخاب نشده'); return; }
+    const img = cropImg.el;
+    const sx = cropState.x * (img.naturalWidth / parseFloat(img.style.width));
+    const sy = cropState.y * (img.naturalHeight / parseFloat(img.style.height));
+    const sw = cropState.w * (img.naturalWidth / parseFloat(img.style.width));
+    const sh = cropState.h * (img.naturalHeight / parseFloat(img.style.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = sw;
+    canvas.height = sh;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png', 1.0);
+    a.download = cropFileName.replace(/\.[^.]+$/, '_cropped.png');
+    a.click();
+    toast('عکس برش‌خورده دانلود شد ✅');
+  };
+
+  // ===== رویدادهای موس (برای کامپیوتر) =====
+  const cropBox = document.getElementById('crop-box');
+
+  function getCropPos(e) {
+    const rect = cropBox.getBoundingClientRect();
+    const wrapperRect = document.getElementById('crop-wrapper').getBoundingClientRect();
+    return {
+      clientX: e.clientX,
+      clientY: e.clientY,
+      offsetX: e.clientX - wrapperRect.left,
+      offsetY: e.clientY - wrapperRect.top
+    };
+  }
+
+  function startCropDrag(e) {
+    e.preventDefault();
+    const pos = getCropPos(e);
+    
+    if (e.target.classList.contains('crop-handle')) {
+      cropState.resizing = true;
+      cropState.handle = e.target.className.replace('crop-handle crop-', '');
+    } else {
+      cropState.dragging = true;
+    }
+    cropState.startX = pos.offsetX;
+    cropState.startY = pos.offsetY;
+  }
+
+  function moveCropDrag(e) {
+    if (!cropState.dragging && !cropState.resizing) return;
+    e.preventDefault();
+    
+    const pos = getCropPos(e);
+    const dx = pos.offsetX - cropState.startX;
+    const dy = pos.offsetY - cropState.startY;
+    cropState.startX = pos.offsetX;
+    cropState.startY = pos.offsetY;
+    
+    const wrapper = document.getElementById('crop-wrapper');
+    const w = parseFloat(wrapper.style.width);
+    const h = parseFloat(wrapper.style.height);
+    
+    if (cropState.dragging) {
+      cropState.x = Math.max(0, Math.min(w - cropState.w, cropState.x + dx));
+      cropState.y = Math.max(0, Math.min(h - cropState.h, cropState.y + dy));
+    } else if (cropState.resizing) {
+      const rh = cropState.handle;
+      if (rh.includes('e')) cropState.w = Math.max(50, Math.min(w - cropState.x, cropState.w + dx));
+      if (rh.includes('w')) { cropState.w = Math.max(50, cropState.w - dx);
+        cropState.x += dx; }
+      if (rh.includes('s')) cropState.h = Math.max(50, Math.min(h - cropState.y, cropState.h + dy));
+      if (rh.includes('n')) { cropState.h = Math.max(50, cropState.h - dy);
+        cropState.y += dy; }
+    }
+    updateCropBox();
+  }
+
+  function endCropDrag(e) {
+    cropState.dragging = false;
+    cropState.resizing = false;
+  }
+
+  // رویدادهای موس (کامپیوتر)
+  cropBox.addEventListener('mousedown', startCropDrag);
+  document.addEventListener('mousemove', moveCropDrag);
+  document.addEventListener('mouseup', endCropDrag);
+
+  // ===== رویدادهای لمسی (گوشی) =====
+  function getTouchPos(e) {
+    const touch = e.touches[0];
+    const rect = document.getElementById('crop-wrapper').getBoundingClientRect();
+    return {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      offsetX: touch.clientX - rect.left,
+      offsetY: touch.clientY - rect.top
+    };
+  }
+
+  function startTouchDrag(e) {
+    e.preventDefault();
+    const pos = getTouchPos(e);
+    
+    // بررسی اینکه آیا روی دسته برش کلیک شده
+    const touch = e.touches[0];
+    const target = document.elementFromPoint(touch.clientX, touch.clientY);
+    
+    if (target && target.classList.contains('crop-handle')) {
+      cropState.resizing = true;
+      cropState.handle = target.className.replace('crop-handle crop-', '');
+    } else {
+      cropState.dragging = true;
+    }
+    cropState.startX = pos.offsetX;
+    cropState.startY = pos.offsetY;
+  }
+
+  function moveTouchDrag(e) {
+    if (!cropState.dragging && !cropState.resizing) return;
+    e.preventDefault();
+    
+    const pos = getTouchPos(e);
+    const dx = pos.offsetX - cropState.startX;
+    const dy = pos.offsetY - cropState.startY;
+    cropState.startX = pos.offsetX;
+    cropState.startY = pos.offsetY;
+    
+    const wrapper = document.getElementById('crop-wrapper');
+    const w = parseFloat(wrapper.style.width);
+    const h = parseFloat(wrapper.style.height);
+    
+    if (cropState.dragging) {
+      cropState.x = Math.max(0, Math.min(w - cropState.w, cropState.x + dx));
+      cropState.y = Math.max(0, Math.min(h - cropState.h, cropState.y + dy));
+    } else if (cropState.resizing) {
+      const rh = cropState.handle;
+      if (rh.includes('e')) cropState.w = Math.max(50, Math.min(w - cropState.x, cropState.w + dx));
+      if (rh.includes('w')) { cropState.w = Math.max(50, cropState.w - dx);
+        cropState.x += dx; }
+      if (rh.includes('s')) cropState.h = Math.max(50, Math.min(h - cropState.y, cropState.h + dy));
+      if (rh.includes('n')) { cropState.h = Math.max(50, cropState.h - dy);
+        cropState.y += dy; }
+    }
+    updateCropBox();
+  }
+
+  function endTouchDrag(e) {
+    cropState.dragging = false;
+    cropState.resizing = false;
+  }
+
+  // رویدادهای لمسی (گوشی) با passive: false برای جلوگیری از اسکرول
+  cropBox.addEventListener('touchstart', startTouchDrag, { passive: false });
+  document.addEventListener('touchmove', moveTouchDrag, { passive: false });
+  document.addEventListener('touchend', endTouchDrag);
 
   // ===== PDF به عکس =====
   let pdfDoc=null,pdfFileName='',pdfRenderedPages=[];
